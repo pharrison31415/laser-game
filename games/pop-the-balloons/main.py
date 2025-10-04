@@ -11,7 +11,6 @@ class PopTheBalloons(Game):
         self.manifest = manifest
         self.balloons = []
         self.score = 0
-        random.seed(0)
         w, h = ctx.screen_size
         n = manifest.get("options", {}).get("balloon_count", 12)
         for _ in range(n):

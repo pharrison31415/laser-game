@@ -145,11 +145,10 @@ class ColorTracker:
         STABLE_PIXELS = 4
         TIMEOUT = 6.0
 
-        for idx, (sx, sy) in enumerate(corners_screen):
+        for idx, _ in enumerate(corners_screen):
             stable = 0
             last = None
-            import time as _t
-            t0 = _t.time()
+            t0 = time.time()
 
             while True:
                 screen.fill((0, 0, 0))
@@ -157,7 +156,7 @@ class ColorTracker:
                 screen.blit(font.render(msg, True, (240, 240, 240)), (16, 16))
                 for j, (cx, cy) in enumerate(corners_screen):
                     color = (255, 0, 0) if j == idx else (90, 0, 0)
-                    pygame.draw.circle(screen, color, (cx, cy), 10)
+                    pygame.draw.circle(screen, color, (cx, cy), 15)
                 pygame.display.flip()
 
                 for ev in pygame.event.get():
@@ -183,7 +182,7 @@ class ColorTracker:
                         detected_cam.append(cam_pt)
                         break
 
-                if (_t.time() - t0) > TIMEOUT:
+                if (time.time() - t0) > TIMEOUT:
                     return np.eye(3, dtype=np.float32)
 
         src = np.array(detected_cam, dtype=np.float32)
