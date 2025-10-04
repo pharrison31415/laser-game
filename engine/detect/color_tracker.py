@@ -29,9 +29,32 @@ class ColorTracker:
         self.colors = colors
         self.show_preview = show_preview
         self.preview_name = preview_name
+
+        self._corners_cam: List[Tuple[int, int]] = []
+
         if self.show_preview:
             cv2.namedWindow(self.preview_name, cv2.WINDOW_NORMAL)
             cv2.resizeWindow(self.preview_name, 640, 360)
+            
+    def set_preview_corners_cam(self, corners_cam: List[Tuple[int, int]] | None):
+        self._corners_cam = [(int(x), int(y)) for (x, y) in (corners_cam or [])]
+
+    def set_preview_corners_from_H(self, H: np.ndarray | None, screen_size: Tuple[int, int]):
+        self._corners_cam = []
+        if H is None:
+            return
+        try:
+            Hinv = np.linalg.inv(H)
+        except np.linalg.LinAlgError:
+            return
+
+        w, h = screen_size
+        screen_corners = np.array(
+            [[[0, 0]], [[w - 1, 0]], [[w - 1, h - 1]], [[0, h - 1]]], dtype=np.float32
+        )  # TL, TR, BR, BL
+        cam_pts = cv2.perspectiveTransform(screen_corners, Hinv).squeeze(1)  # (4,2)
+        self._corners_cam = [(int(x), int(y)) for (x, y) in cam_pts.tolist()]
+
 
     def _mask_for_color(self, hsv, color_name: str):
         ranges = DEFAULT_RANGES.get(color_name, [])
@@ -82,6 +105,19 @@ class ColorTracker:
                     cv2.circle(overlay, (x, y), 4, (255, 255, 0), -1)
 
         if self.show_preview:
+            if len(self._corners_cam) == 4:
+                labels = ("TL", "TR", "BR", "BL")
+                for i, (x, y) in enumerate(self._corners_cam):
+                    cv2.circle(overlay, (x, y), 6, (0, 255, 0), -1)
+                    cv2.putText(
+                        overlay, labels[i], (x + 8, y - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA
+                    )
+                for i in range(4):
+                    p1 = self._corners_cam[i]
+                    p2 = self._corners_cam[(i + 1) % 4]
+                    cv2.line(overlay, p1, p2, (0, 200, 0), 2, cv2.LINE_AA)
+
             cv2.putText(
                 overlay, time.strftime("%H:%M:%S"),
                 (12, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA
@@ -155,6 +191,7 @@ class ColorTracker:
         H, _ = cv2.findHomography(src, dst, method=cv2.RANSAC, ransacReprojThreshold=3.0)
         if H is None:
             H = np.eye(3, dtype=np.float32)
+        self.set_preview_corners_cam(detected_cam)
         return H
 
     def teardown(self):

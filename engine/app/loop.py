@@ -53,8 +53,13 @@ def run_game(
 
     tracker = ColorTracker(colors=colors, show_preview=show_preview, preview_name="Preview")
     H_store = HomographyStore(profile_name=profile)
-    H = H_store.load_or_none()  # None => identity mapping (no warp)
+    H, corners_cam = H_store.load()
+    if corners_cam:
+        tracker.set_preview_corners_cam(corners_cam)
+    else:
+        tracker.set_preview_corners_from_H(H, screen_size)
     input_layer = LaserInput(max_points_per_color=max_points_per_color, H=H)
+
 
     ctx = Context(
         screen=screen,
@@ -78,10 +83,16 @@ def run_game(
                     if event.key == pygame.K_ESCAPE:
                         running = False
                     elif event.key == pygame.K_c:
-                        # On-demand calibration UI
                         H = tracker.auto_calibrate(screen, screen_size, cam)
-                        H_store.save(H)
+                        # fetch corners from tracker (just set during calibration)
+                        # (they are stored internally; re-use for persistence)
+                        corners = getattr(tracker, "_corners_cam", [])
+                        H_store.save(H, corners_cam=corners if len(corners) == 4 else None)
                         input_layer.set_homography(H)
+                        if len(corners) == 4:
+                            tracker.set_preview_corners_cam(corners)
+                        else:
+                            tracker.set_preview_corners_from_H(H, screen_size)
                 game.on_event(event)
 
             ok, frame_bgr = cam.read()
