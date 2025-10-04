@@ -177,26 +177,11 @@ class WhackAMole(Game):
             return
 
         # Draw mole
-        now = pygame.time.get_ticks()
         pygame.draw.circle(
             surface, MOLE_COLOR, (int(self.mole.x), int(self.mole.y)), int(self.mole.r), width=2)
 
-        # Lifetime ring arithmetic
-        total = self._current_duration_ms()
-        remaining = max(0, self.mole.expires_at_ms - now)
-        pct = remaining / total if total > 0 else 0.0
-        pct = max(0.0, min(1.0, pct))
-        ring_w = 2
-        rr = int(self.mole.r + ring_w + 10)
-
-        # Start and end arc angles
-        start_angle = 0.5 * math.pi
-        end_angle = start_angle + 2 * math.pi * pct
-
         # Draw lifetime ring
-        rect = pygame.Rect(self.mole.x - rr, self.mole.y - rr, rr * 2, rr * 2)
-        pygame.draw.arc(surface, (235, 235, 235), rect,
-                        start_angle, end_angle, ring_w)
+        self._draw_lifetime_ring(surface)
 
     def _draw_start_screen(self, surface: pygame.Surface):
         cx, cy = self.start_center
@@ -230,6 +215,26 @@ class WhackAMole(Game):
         # Shoot here text
         draw_text(surface, "Shoot here to start", (cx - 140, cy - r - 40),
                   (240, 240, 240), size=26)
+
+    def _draw_lifetime_ring(self, surface: pygame.Surface):
+        now = pygame.time.get_ticks()
+
+        # Arithmetic
+        total = self._current_duration_ms()
+        remaining = max(0, self.mole.expires_at_ms - now)
+        pct = remaining / total if total > 0 else 0.0
+        pct = max(0.0, min(1.0, pct))
+        ring_w = 2
+        rr = int(self.mole.r + ring_w + 10)
+
+        # Start and end arc angles
+        start_angle = 0.5 * math.pi
+        end_angle = start_angle + 2 * math.pi * pct
+
+        # Draw lifetime ring
+        rect = pygame.Rect(self.mole.x - rr, self.mole.y - rr, rr * 2, rr * 2)
+        pygame.draw.arc(surface, (235, 235, 235), rect,
+                        start_angle, end_angle, ring_w)
 
     def on_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.KEYDOWN:
