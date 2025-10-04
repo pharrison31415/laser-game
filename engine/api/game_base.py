@@ -1,6 +1,9 @@
 from __future__ import annotations
-from typing import Any
+
 import pygame
+
+from engine.app.context import Context
+
 from .frame_data import FrameData
 
 
@@ -9,7 +12,7 @@ class Game:
     Base interface games should implement.
     """
 
-    def on_load(self, ctx: Any, manifest: dict) -> None:
+    def on_load(self, ctx: Context, manifest: dict) -> None:
         """Called once after the game module loads."""
         ...
 

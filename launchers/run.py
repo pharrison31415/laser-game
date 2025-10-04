@@ -1,13 +1,15 @@
 import argparse
 import sys
 from pathlib import Path
+import os
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 
 # Ensure repo root is on sys.path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from engine.app.loop import run_game  # noqa: E402
+from engine.app.loop import run_game
 
 
 def main():
