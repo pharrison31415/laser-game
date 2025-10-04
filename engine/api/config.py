@@ -11,3 +11,4 @@ class EngineConfig:
     cam_index: int
     profile: str
     show_preview: bool
+    mirror: bool = False
