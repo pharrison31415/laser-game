@@ -1,0 +1,11 @@
+id: TEMPLATE_GAME
+title: Template Game
+version: 0.1.0
+authors: [ "You" ]
+needs_colors: [ "red" ]
+max_points_per_color:
+  red: 1
+description: "Starter template."
+instructions: "Point the laser at the screen."
+options:
+  round_time_sec: 60

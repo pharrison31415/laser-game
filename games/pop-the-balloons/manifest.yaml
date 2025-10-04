@@ -1,0 +1,11 @@
+id: pop-the-balloons
+title: Pop the Balloons
+version: 0.1.0
+authors: [ "You" ]
+needs_colors: [ "red" ]
+max_points_per_color:
+  red: 3
+description: "Pop balloons by touching them with the laser dot."
+instructions: "Point at balloons to pop them. Press C to (re)calibrate."
+options:
+  balloon_count: 12
