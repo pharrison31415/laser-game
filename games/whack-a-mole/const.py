@@ -1,24 +1,25 @@
 # Start screen
-START_TARGET_RADIUS = 70           # px for the "shoot here" target
-HOLD_TO_START_MS = 1000            # how long the laser must stay on the target
+START_TARGET_RADIUS = 70
+HOLD_TO_START_MS = 1000
 
-# Gameplay difficulty
-START_RADIUS = 90                  # initial mole radius (px)
-START_DURATION_SEC = 3.0           # initial mole lifetime (seconds)
+# Mole radii
+START_RADIUS = 90
+RADIUS_DECAY_PER_STAGE = 0.75
+MIN_RADIUS = 14
 
-RADIUS_DECAY_PER_STAGE = 0.75      # radius multiplier per stage
-DURATION_DECAY_PER_STAGE = 0.75    # lifetime multiplier per stage
+# Mole durations
+DURATION_DECAY_PER_STAGE = 0.75
+START_DURATION_SEC = 3.0
+MIN_DURATION_SEC = 0.25
 
-MIN_RADIUS = 14                    # px
-MIN_DURATION_SEC = 0.25            # seconds
+# Misc.
+TARGETS_PER_STAGE = 6              # Moles per stage (hit or miss)
+HIT_FX_DURATION_MS = 500           # How long the "Hit!" text is on screen
+HIT_FX_TEXT_SIZE = 28
+HIT_POP_DELAY_MS = 1500            # Delay before next mole after hit/miss
+EDGE_MARGIN = 24                   # Keep targets off the edges
 
-TARGETS_PER_STAGE = 6              # moles per stage (hit or miss)
-
-# UX
-EDGE_MARGIN = 24                   # keep targets off the edges
-
-HIT_POP_DELAY_MS = 1500            # delay before next mole after hit/miss
-
+# Colors
 HUD_COLOR = (230, 230, 230)
 MOLE_COLOR = (50, 200, 120)
 START_TARGET_COLOR = (70, 180, 110)

@@ -21,6 +21,13 @@ class Mole:
     hit: bool = False
 
 
+@dataclass
+class HitEffect:
+    x: float
+    y: float
+    expires_at_ms: int
+
+
 class GameState(Enum):
     Start = 1
     Playing = 2
@@ -45,6 +52,7 @@ class WhackAMole(Game):
         self.score = 0
         self.stage_mole_count = 0
         self.mole: Optional[Mole] = None
+        self.hit_effects: list[HitEffect] = []
         self.next_spawn_ms: int = 0
 
     def _begin_gameplay(self):
@@ -138,9 +146,18 @@ class WhackAMole(Game):
                     # Hit!
                     self.mole.hit = True
                     self.score += 1
+                    self.hit_effects.append(HitEffect(
+                        x=p.x,
+                        y=p.y,
+                        expires_at_ms=now + HIT_FX_DURATION_MS
+                    ))
                     self.mole = None
                     self.next_spawn_ms = now + HIT_POP_DELAY_MS
                     break
+
+        # Update hit effects list
+        self.hit_effects = [
+            e for e in self.hit_effects if now < e.expires_at_ms]
 
     def on_draw(self, surface: pygame.Surface) -> None:
         if self.state == GameState.Start:
@@ -150,6 +167,11 @@ class WhackAMole(Game):
         # Stage Score
         draw_text(
             surface, f"Stage {self.stage} | Score: {self.score}", (20, 16), HUD_COLOR, size=26)
+
+        # Draw hit effect
+        for e in self.hit_effects:
+            draw_text(surface, "Hit!", (e.x - 20, e.y - 40),
+                      HUD_COLOR, size=HIT_FX_TEXT_SIZE)
 
         if not self.mole:
             return
