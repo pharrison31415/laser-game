@@ -64,7 +64,7 @@ def run_game(
 
     # Pass mirror to input layer so points are mirrored for gameplay
     input_layer = LaserInput(
-        max_points_per_color=max_points_per_color, H=H)
+        max_points_per_color=max_points_per_color, H=H, mirror=mirror)
 
     # Render target: draw to off-screen if mirroring, otherwise draw directly to screen
     render_surface = screen if not mirror else pygame.Surface(

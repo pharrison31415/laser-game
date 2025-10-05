@@ -6,12 +6,16 @@ from engine.api.frame_data import Point
 
 
 class LaserInput:
-    def __init__(self, max_points_per_color: int, H: np.ndarray | None):
+    def __init__(self, max_points_per_color: int, H: np.ndarray | None, mirror: bool = False):
         self.max_points = max_points_per_color
         self.H = H
+        self.mirror = mirror
 
     def set_homography(self, H: np.ndarray):
         self.H = H
+
+    def set_mirror(self, mirror: bool):
+        self.mirror = mirror
 
     def _map_point(self, cam_xy: Tuple[float, float], screen_size: Tuple[int, int]) -> Tuple[float, float] | None:
         if self.H is None:
@@ -24,6 +28,8 @@ class LaserInput:
 
         w, h = screen_size
         if 0 <= x < w and 0 <= y < h:
+            if self.mirror:
+                x = (w - 1) - x
             return (x, y)
         return None
 
