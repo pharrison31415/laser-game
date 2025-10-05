@@ -249,13 +249,10 @@ class QuickDraw(Game):
 
         if self.phase in (Phase.CountdownReady, Phase.CountdownSet):
             self._draw_countdown(surface)
-            self._draw_hold_targets(surface, dim=True)
             return
 
         if self.phase == Phase.Armed:
-            # Only turns green *after* the randomized delay
             self._draw_go_border(surface)
-            self._draw_hold_targets(surface, dim=True)
             self._draw_armed_text(surface)
             return
 
