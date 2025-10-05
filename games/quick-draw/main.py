@@ -109,7 +109,8 @@ class QuickDraw(Game):
             reds = frame.points_by_color.get("red", [])
             if reds:
                 # Slightly padded hit box so it feels easy to click with a jittery laser
-                hitbox = self.play_again_rect.inflate(PLAY_AGAIN_HIT_PAD * 2, PLAY_AGAIN_HIT_PAD * 2)
+                hitbox = self.play_again_rect.inflate(
+                    PLAY_AGAIN_HIT_PAD * 2, PLAY_AGAIN_HIT_PAD * 2)
                 for p in reds:
                     if hitbox.collidepoint(p.x, p.y):
                         self._init_state()
@@ -122,7 +123,6 @@ class QuickDraw(Game):
                     self.last_flash_ms = now
                     self.flash_counter += 1
             return
-
 
         if self.phase == Phase.WaitingForReady:
             # Track hold inside circles
@@ -380,22 +380,28 @@ class QuickDraw(Game):
 
         lt = left_time
         rt = right_time
-        diff = None
-        if lt is not None and rt is not None:
-            diff = abs(lt - rt)
 
         # Labels
         draw_text(surface, "Results", (self.mid_x - 60, 24),
                   HUD_COLOR, size=BIG_FONT_SIZE)
+
+        # Base x positions for player labels
+        p1_x = self.mid_x - 180
+        p2_x = self.mid_x + 20
+
         draw_text(surface, f"P1: {fmt_time(lt)}" + (" (DNF)" if l.dnf else ""),
-                  (self.mid_x - 180, y0), HUD_COLOR, size=HUD_FONT_SIZE)
+                  (p1_x, y0), HUD_COLOR, size=HUD_FONT_SIZE)
         draw_text(surface, f"P2: {fmt_time(rt)}" + (" (DNF)" if r.dnf else ""),
-                  (self.mid_x + 20,  y0), HUD_COLOR, size=HUD_FONT_SIZE)
+                  (p2_x,  y0), HUD_COLOR, size=HUD_FONT_SIZE)
 
-        if diff is not None:
-            draw_text(surface, f"Δ = {diff:.0f} ms", (self.mid_x -
-                      45, y0 + 40), HUD_COLOR, size=HUD_FONT_SIZE)
-
+        # Show "+n ms" under the slower (loser) time when both are valid
+        if lt is not None and rt is not None and lt != rt and not l.dnf and not r.dnf:
+            diff = abs(lt - rt)
+            loser_x = p1_x if lt > rt else p2_x
+            # place a little below the time line
+            draw_text(surface, f"+{diff:.0f} ms",
+                      (loser_x, y0 + HUD_FONT_SIZE + 8),
+                      HUD_COLOR, size=HUD_FONT_SIZE)
         # Shot dots
         if l.at_xy:
             pygame.draw.circle(surface, (255, 255, 255), l.at_xy, 6)
@@ -403,7 +409,8 @@ class QuickDraw(Game):
             pygame.draw.circle(surface, (255, 255, 255), r.at_xy, 6)
 
         # Replay button: rectangle + centered label
-        pygame.draw.rect(surface, PLAY_AGAIN_COLOR, self.play_again_rect, width=3)
+        pygame.draw.rect(surface, PLAY_AGAIN_COLOR,
+                         self.play_again_rect, width=3)
 
         label = "Shoot here to play again"
         # Rough centering: nudge the text; adjust if your draw_text auto-centers
@@ -411,8 +418,8 @@ class QuickDraw(Game):
         text_y = self.play_again_rect.centery - 14
         draw_text(surface, label, (text_x, text_y), PLAY_AGAIN_COLOR, size=24)
 
-
     # ---------- Events ----------
+
     def on_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_SPACE, pygame.K_RETURN):
