@@ -26,6 +26,7 @@ class ShotResult:
     dnf: bool               # true if exceeded limit
     at_xy: Optional[tuple[int, int]]  # where they shot
     when_ms: Optional[int]  # absolute tick when shot was detected
+    false_start: bool = False
 
 
 class Phase(Enum):
@@ -178,9 +179,14 @@ class QuickDraw(Game):
 
         elif self.phase == Phase.Armed:
             # Ignore shots before go_time (no false-start penalty in spec; we just ignore)
-            reds = frame.points_by_color.get("red", [])
-            if not self.go_time_ms:
-                self.go_time_ms = now  # fallback
+            # reds = frame.points_by_color.get("red", [])
+            # if not self.go_time_ms:
+            #     self.go_time_ms = now  # fallback
+
+            if self.go_time_ms and now < self.go_time_ms:
+                if self._check_false_start(frame, now):
+                    return
+
 
             # Record first valid shot per side occurring at or after go_time
             if now >= self.go_time_ms:
@@ -231,6 +237,35 @@ class QuickDraw(Game):
 
         else:
             pass
+
+    def _check_false_start(self, frame: FrameData, now: int) -> bool:
+        # any red in each half?
+        left_pts = self._points_in_half(frame, left=True)
+        right_pts = self._points_in_half(frame, left=False)
+
+        if left_pts:
+            self.left_result.false_start = True
+            self.left_result.dnf = True
+            self.left_result.when_ms = now
+            # Finish immediately
+            self._advance_phase(Phase.Results)
+            self.last_flash_ms = now
+            self.flash_counter = 0
+            self.flash_on = True
+            return True
+
+        if right_pts:
+            self.right_result.false_start = True
+            self.right_result.dnf = True
+            self.right_result.when_ms = now
+            self._advance_phase(Phase.Results)
+            self.last_flash_ms = now
+            self.flash_counter = 0
+            self.flash_on = True
+            return True
+
+        return False
+
 
     # ---------- Draw ----------
     def on_draw(self, surface: pygame.Surface) -> None:
@@ -389,10 +424,16 @@ class QuickDraw(Game):
         p1_x = self.mid_x - 180
         p2_x = self.mid_x + 20
 
-        draw_text(surface, f"P1: {fmt_time(lt)}" + (" (DNF)" if l.dnf else ""),
-                  (p1_x, y0), HUD_COLOR, size=HUD_FONT_SIZE)
-        draw_text(surface, f"P2: {fmt_time(rt)}" + (" (DNF)" if r.dnf else ""),
-                  (p2_x,  y0), HUD_COLOR, size=HUD_FONT_SIZE)
+        # Build notes 
+        p1_note = " (False start)" if l.false_start else (" (DNF)" if l.dnf else "")
+        p2_note = " (False start)" if r.false_start else (" (DNF)" if r.dnf else "")
+
+        # Draw notes
+        draw_text(surface, f"P1: {fmt_time(lt)}{p1_note}",
+                (self.mid_x - 180, y0), HUD_COLOR, size=HUD_FONT_SIZE)
+        draw_text(surface, f"P2: {fmt_time(rt)}{p2_note}",
+                (self.mid_x + 20,  y0), HUD_COLOR, size=HUD_FONT_SIZE)
+
 
         # Show "+n ms" under the slower (loser) time when both are valid
         if lt is not None and rt is not None and lt != rt and not l.dnf and not r.dnf:

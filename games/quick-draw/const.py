@@ -9,7 +9,7 @@ START_TARGET_COLOR  = (100, 180, 255)
 START_RING_COLOR    = (255, 255, 255)
 TEXT_SHADOW         = (25, 25, 25)
 
-START_TARGET_RADIUS = 42
+START_TARGET_RADIUS = 80
 HOLD_TO_READY_MS    = 700     # how long to hold to confirm ready
 
 # Countdown pacing
