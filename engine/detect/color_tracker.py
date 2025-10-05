@@ -155,7 +155,7 @@ class ColorTracker:
                 msg = f"Calibrating {labels[idx]} ({idx+1}/4) — hold laser steady; Esc to cancel"
                 screen.blit(font.render(msg, True, (240, 240, 240)), (16, 16))
                 for j, (cx, cy) in enumerate(corners_screen):
-                    color = (255, 0, 0) if j == idx else (90, 0, 0)
+                    color = (255, 0, 0) if j == idx else (50, 50, 50)
                     pygame.draw.circle(screen, color, (cx, cy), 15)
                 pygame.display.flip()
 
