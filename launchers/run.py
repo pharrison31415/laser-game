@@ -16,7 +16,6 @@ def main():
     parser = argparse.ArgumentParser(description="Laser Platform Launcher")
     parser.add_argument("--game", required=True, help="Game folder name under games/")
     parser.add_argument("--preview", action="store_true", help="Show camera preview window")
-    parser.add_argument("--max-points", type=int, default=3, help="Top-N points per color")
     parser.add_argument("--screen", default="1280x720", help="Screen size WxH, e.g. 1280x720")
     parser.add_argument("--cam-index", type=int, default=0, help="OpenCV camera index")
     parser.add_argument("--mirror", action="store_true", help="Mirror the game window horizontally")
@@ -28,7 +27,6 @@ def main():
     run_game(
         game_id=args.game,
         screen_size=(w, h),
-        max_points_per_color=args.max_points,
         cam_index=args.cam_index,
         show_preview=args.preview,
         mirror=args.mirror,

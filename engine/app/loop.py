@@ -18,7 +18,6 @@ from engine.input.laser_input import LaserInput
 def run_game(
     game_id: str,
     screen_size: tuple[int, int],
-    max_points_per_color: int,
     cam_index: int,
     show_preview: bool,
     mirror: bool = False,
@@ -31,7 +30,6 @@ def run_game(
 
     cfg = EngineConfig(
         screen_size=screen_size,
-        max_points_per_color=max_points_per_color,
         cam_index=cam_index,
         show_preview=show_preview,
         mirror=mirror,
@@ -68,7 +66,9 @@ def run_game(
 
     # Pass mirror to input layer so points are mirrored for gameplay
     input_layer = LaserInput(
-        max_points_per_color=max_points_per_color, H=H, mirror=mirror)
+        max_points=manifest.get("max_points_per_color", None),
+        H=H,
+        mirror=mirror)
 
     # Render target: draw to off-screen if mirroring, otherwise draw directly to screen
     render_surface = screen if not mirror else pygame.Surface(
@@ -123,10 +123,10 @@ def run_game(
             # Merge synthetic debug points
             synthetic = injector.emit_points()
             for color, pts in synthetic.items():
-                # Append and re-trim to Top-N (keep engine’s selection rule)
                 merged = (points_by_color.get(color, []) + pts)
                 merged.sort(key=lambda p: p.intensity, reverse=True)
-                points_by_color[color] = merged[: cfg.max_points_per_color]
+                # TODO: Consider trimming by manifest max_points_by_color
+                points_by_color[color] = merged
 
             # Make frame data
             frame_data = FrameData(timestamp=time.time(),
