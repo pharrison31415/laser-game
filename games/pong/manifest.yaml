@@ -1,0 +1,18 @@
+id: pong
+title: Laser Pong
+version: 0.1.0
+authors: [ "You" ]
+needs_colors: [ "red" ]
+max_points_per_color:
+  red: 3
+description: "Two-player Pong. Each player moves their paddle by aiming a red laser on their half of the screen."
+instructions: |
+  Aim your red laser anywhere on your half to move the paddle to that Y position.
+  First to 7 wins. Press Space/Enter to serve after a point. Press C to (re)calibrate.
+options:
+  winning_score: 7
+debug_click:
+  enabled: true
+  buttons:
+    left: red
+  intensity: 9999
