@@ -23,9 +23,9 @@ class HoldCircle:
 class ShotResult:
     # reaction time relative to go_time; None until fired
     time_ms: Optional[int]
-    dnf: bool               # true if exceeded limit
-    at_xy: Optional[tuple[int, int]]  # where they shot
-    when_ms: Optional[int]  # absolute tick when shot was detected
+    dnf: bool
+    coords: Optional[tuple[int, int]]
+    when_ms: Optional[int]
     false_start: bool = False
 
 
@@ -33,7 +33,7 @@ class Phase(Enum):
     WaitingForReady = 1
     CountdownReady = 2
     CountdownSet = 3
-    Armed = 4  # border turns green; waiting for shots
+    Armed = 4
     Results = 5
 
 
@@ -71,9 +71,9 @@ class QuickDraw(Game):
         self.go_delay_ms: int = 0
 
         self.left_result = ShotResult(
-            time_ms=None, dnf=False, at_xy=None, when_ms=None)
+            time_ms=None, dnf=False, coords=None, when_ms=None)
         self.right_result = ShotResult(
-            time_ms=None, dnf=False, at_xy=None, when_ms=None)
+            time_ms=None, dnf=False, coords=None, when_ms=None)
 
         self.flash_counter: int = 0
         self.last_flash_ms: int = 0
@@ -100,63 +100,11 @@ class QuickDraw(Game):
         self.phase = new_phase
         self.phase_started_ms = pygame.time.get_ticks()
 
-    # ---------- Update ----------
     def on_update(self, dt_ms: float, frame: FrameData) -> None:
         now = pygame.time.get_ticks()
 
-        # Restart anytime in Results with any laser hit anywhere
-        if self.phase == Phase.Results:
-            # Look for a red dot inside the replay button
-            reds = frame.points_by_color.get("red", [])
-            if reds:
-                # Slightly padded hit box so it feels easy to click with a jittery laser
-                hitbox = self.play_again_rect.inflate(
-                    PLAY_AGAIN_HIT_PAD * 2, PLAY_AGAIN_HIT_PAD * 2)
-                for p in reds:
-                    if hitbox.collidepoint(p.x, p.y):
-                        self._init_state()
-                        return
-            # Handle flashing winner border timing while we wait on replay
-            if self.flash_counter < WIN_FLASH_COUNT:
-                now = pygame.time.get_ticks()
-                if now - self.last_flash_ms >= WIN_FLASH_INTERVAL:
-                    self.flash_on = not self.flash_on
-                    self.last_flash_ms = now
-                    self.flash_counter += 1
-            return
-
         if self.phase == Phase.WaitingForReady:
-            # Track hold inside circles
-            left_pts = self._points_in_half(frame, left=True)
-            right_pts = self._points_in_half(frame, left=False)
-
-            lp = self._any_point_in_circle(
-                left_pts,  self.left_hold.cx,  self.left_hold.cy,  self.left_hold.r)
-            rp = self._any_point_in_circle(
-                right_pts, self.right_hold.cx, self.right_hold.cy, self.right_hold.r)
-
-            # Only accumulate hold time if not yet latched
-            if not self.left_ready_latched:
-                if lp:
-                    self.left_hold_ms += dt_ms
-                else:
-                    self.left_hold_ms = 0.0
-
-                if self.left_hold_ms >= HOLD_TO_READY_MS:
-                    self.left_ready_latched = True
-
-            if not self.right_ready_latched:
-                if rp:
-                    self.right_hold_ms += dt_ms
-                else:
-                    self.right_hold_ms = 0.0
-
-                if self.right_hold_ms >= HOLD_TO_READY_MS:
-                    self.right_ready_latched = True
-
-            # When both are latched ready (even if not currently holding), move on
-            if self.left_ready_latched and self.right_ready_latched:
-                self._advance_phase(Phase.CountdownReady)
+            self._on_update_waiting_for_ready(dt_ms, frame)
 
         elif self.phase == Phase.CountdownReady:
             if now - self.phase_started_ms >= READY_MS:
@@ -170,73 +118,117 @@ class QuickDraw(Game):
                 self._advance_phase(Phase.Armed)
                 self.go_time_ms = now + self.go_delay_ms
                 self.left_result = ShotResult(
-                    time_ms=None, dnf=False, at_xy=None, when_ms=None)
+                    time_ms=None, dnf=False, coords=None, when_ms=None)
                 self.right_result = ShotResult(
-                    time_ms=None, dnf=False, at_xy=None, when_ms=None)
+                    time_ms=None, dnf=False, coords=None, when_ms=None)
                 self.flash_counter = 0
                 self.last_flash_ms = now
                 self.flash_on = True  # not used until Results, but init anyway
 
         elif self.phase == Phase.Armed:
-            # Ignore shots before go_time (no false-start penalty in spec; we just ignore)
-            # reds = frame.points_by_color.get("red", [])
-            # if not self.go_time_ms:
-            #     self.go_time_ms = now  # fallback
-
-            if self.go_time_ms and now < self.go_time_ms:
-                if self._check_false_start(frame, now):
-                    return
-
-
-            # Record first valid shot per side occurring at or after go_time
-            if now >= self.go_time_ms:
-                # Left
-                if self.left_result.when_ms is None:
-                    lpts = self._points_in_half(frame, left=True)
-                    if lpts:
-                        # Take the first point (fastest)
-                        p = lpts[0]
-                        self.left_result.when_ms = now
-                        self.left_result.time_ms = now - self.go_time_ms
-                        self.left_result.at_xy = (p.x, p.y)
-
-                # Right
-                if self.right_result.when_ms is None:
-                    rpts = self._points_in_half(frame, left=False)
-                    if rpts:
-                        p = rpts[0]
-                        self.right_result.when_ms = now
-                        self.right_result.time_ms = now - self.go_time_ms
-                        self.right_result.at_xy = (p.x, p.y)
-
-                # DNF checks
-                elapsed_since_go = now - self.go_time_ms
-                if elapsed_since_go >= DNF_LIMIT_MS:
-                    if self.left_result.when_ms is None:
-                        self.left_result.dnf = True
-                    if self.right_result.when_ms is None:
-                        self.right_result.dnf = True
-
-                # Move to results when both sides have a result (time or DNF)
-                def has_outcome(r: ShotResult):
-                    return (r.when_ms is not None) or r.dnf
-
-                if (has_outcome(self.left_result) and has_outcome(self.right_result)):
-                    self._advance_phase(Phase.Results)
-                    self.last_flash_ms = now
-                    self.flash_counter = 0
-                    self.flash_on = True
+            self._on_update_armed(frame)
 
         elif self.phase == Phase.Results:
-            # Flash winner side a few times
-            if self.flash_counter < WIN_FLASH_COUNT:
-                if now - self.last_flash_ms >= WIN_FLASH_INTERVAL:
-                    self.flash_on = not self.flash_on
-                    self.last_flash_ms = now
-                    self.flash_counter += 1
+            self._on_update_results(frame)
 
-        else:
-            pass
+    def _on_update_waiting_for_ready(self, dt_ms: float, frame: FrameData) -> None:
+        # Track hold inside circles
+        left_pts = self._points_in_half(frame, left=True)
+        right_pts = self._points_in_half(frame, left=False)
+
+        lp = self._any_point_in_circle(
+            left_pts,  self.left_hold.cx,  self.left_hold.cy,  self.left_hold.r)
+        rp = self._any_point_in_circle(
+            right_pts, self.right_hold.cx, self.right_hold.cy, self.right_hold.r)
+
+        # Only accumulate hold time if not yet latched
+        if not self.left_ready_latched:
+            if lp:
+                self.left_hold_ms += dt_ms
+            else:
+                self.left_hold_ms = 0.0
+
+            if self.left_hold_ms >= HOLD_TO_READY_MS:
+                self.left_ready_latched = True
+
+        if not self.right_ready_latched:
+            if rp:
+                self.right_hold_ms += dt_ms
+            else:
+                self.right_hold_ms = 0.0
+
+            if self.right_hold_ms >= HOLD_TO_READY_MS:
+                self.right_ready_latched = True
+
+        # When both are latched ready (even if not currently holding), move on
+        if self.left_ready_latched and self.right_ready_latched:
+            self._advance_phase(Phase.CountdownReady)
+
+    def _on_update_armed(self, frame: FrameData) -> None:
+        now = pygame.time.get_ticks()
+
+        if self.go_time_ms and now < self.go_time_ms:
+            if self._check_false_start(frame, now):
+                return
+
+        # Record first valid shot per side occurring at or after go_time
+        if now < self.go_time_ms:
+            return
+
+        # Left
+        if self.left_result.when_ms is None:
+            lpts = self._points_in_half(frame, left=True)
+            if lpts:
+                p = lpts[0]
+                self.left_result.when_ms = now
+                self.left_result.time_ms = now - self.go_time_ms
+                self.left_result.coords = (p.x, p.y)
+
+        # Right
+        if self.right_result.when_ms is None:
+            rpts = self._points_in_half(frame, left=False)
+            if rpts:
+                p = rpts[0]
+                self.right_result.when_ms = now
+                self.right_result.time_ms = now - self.go_time_ms
+                self.right_result.coords = (p.x, p.y)
+
+        # DNF checks
+        elapsed_since_go = now - self.go_time_ms
+        if elapsed_since_go >= DNF_LIMIT_MS:
+            if self.left_result.when_ms is None:
+                self.left_result.dnf = True
+            if self.right_result.when_ms is None:
+                self.right_result.dnf = True
+
+        # Move to results when both sides have a result (time or DNF)
+        def has_outcome(r: ShotResult):
+            return (r.when_ms is not None) or r.dnf
+
+        if (has_outcome(self.left_result) and has_outcome(self.right_result)):
+            self._advance_phase(Phase.Results)
+            self.last_flash_ms = now
+            self.flash_counter = 0
+            self.flash_on = True
+
+    def _on_update_results(self, frame: FrameData) -> None:
+        # Look for a red dot inside the replay button
+        reds = frame.points_by_color.get("red", [])
+        if reds:
+            # Slightly padded hit box so it feels easy to click with a jittery laser
+            hitbox = self.play_again_rect.inflate(
+                PLAY_AGAIN_HIT_PAD * 2, PLAY_AGAIN_HIT_PAD * 2)
+            for p in reds:
+                if hitbox.collidepoint(p.x, p.y):
+                    self._init_state()
+                    return
+
+        # Handle flashing winner border timing while we wait on replay
+        now = pygame.time.get_ticks()
+        if self.flash_counter < WIN_FLASH_COUNT and (now - self.last_flash_ms) >= WIN_FLASH_INTERVAL:
+            self.flash_on = not self.flash_on
+            self.last_flash_ms = now
+            self.flash_counter += 1
 
     def _check_false_start(self, frame: FrameData, now: int) -> bool:
         # any red in each half?
@@ -244,9 +236,11 @@ class QuickDraw(Game):
         right_pts = self._points_in_half(frame, left=False)
 
         if left_pts:
+            p = left_pts[0]
             self.left_result.false_start = True
             self.left_result.dnf = True
             self.left_result.when_ms = now
+            self.left_result.coords = (p.x, p.y)
             # Finish immediately
             self._advance_phase(Phase.Results)
             self.last_flash_ms = now
@@ -255,9 +249,11 @@ class QuickDraw(Game):
             return True
 
         if right_pts:
+            p = right_pts[0]
             self.right_result.false_start = True
             self.right_result.dnf = True
             self.right_result.when_ms = now
+            self.right_result.coords = (p.x, p.y)
             self._advance_phase(Phase.Results)
             self.last_flash_ms = now
             self.flash_counter = 0
@@ -266,8 +262,8 @@ class QuickDraw(Game):
 
         return False
 
-
     # ---------- Draw ----------
+
     def on_draw(self, surface: pygame.Surface) -> None:
         # Midline
         pygame.draw.line(surface, MIDLINE_COLOR,
@@ -344,7 +340,6 @@ class QuickDraw(Game):
                       (self.mid_x - 160, 60), READY_COLOR, size=24)
 
     def _draw_countdown(self, surface):
-        now = pygame.time.get_ticks()
         if self.phase == Phase.CountdownReady:
             draw_text(surface, "Ready", (self.mid_x - 60, 60),
                       READY_COLOR, size=BIG_FONT_SIZE)
@@ -424,16 +419,17 @@ class QuickDraw(Game):
         p1_x = self.mid_x - 180
         p2_x = self.mid_x + 20
 
-        # Build notes 
-        p1_note = " (False start)" if l.false_start else (" (DNF)" if l.dnf else "")
-        p2_note = " (False start)" if r.false_start else (" (DNF)" if r.dnf else "")
+        # Build notes
+        p1_note = " (False start)" if l.false_start else (
+            " (DNF)" if l.dnf else "")
+        p2_note = " (False start)" if r.false_start else (
+            " (DNF)" if r.dnf else "")
 
         # Draw notes
         draw_text(surface, f"P1: {fmt_time(lt)}{p1_note}",
-                (self.mid_x - 180, y0), HUD_COLOR, size=HUD_FONT_SIZE)
+                  (self.mid_x - 180, y0), HUD_COLOR, size=HUD_FONT_SIZE)
         draw_text(surface, f"P2: {fmt_time(rt)}{p2_note}",
-                (self.mid_x + 20,  y0), HUD_COLOR, size=HUD_FONT_SIZE)
-
+                  (self.mid_x + 20,  y0), HUD_COLOR, size=HUD_FONT_SIZE)
 
         # Show "+n ms" under the slower (loser) time when both are valid
         if lt is not None and rt is not None and lt != rt and not l.dnf and not r.dnf:
@@ -444,10 +440,10 @@ class QuickDraw(Game):
                       (loser_x, y0 + HUD_FONT_SIZE + 8),
                       HUD_COLOR, size=HUD_FONT_SIZE)
         # Shot dots
-        if l.at_xy:
-            pygame.draw.circle(surface, (255, 255, 255), l.at_xy, 6)
-        if r.at_xy:
-            pygame.draw.circle(surface, (255, 255, 255), r.at_xy, 6)
+        if l.coords:
+            pygame.draw.circle(surface, (255, 255, 255), l.coords, 6)
+        if r.coords:
+            pygame.draw.circle(surface, (255, 255, 255), r.coords, 6)
 
         # Replay button: rectangle + centered label
         pygame.draw.rect(surface, PLAY_AGAIN_COLOR,
