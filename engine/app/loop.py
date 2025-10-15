@@ -21,7 +21,6 @@ def run_game(
     colors: list[str],
     max_points_per_color: int,
     cam_index: int,
-    profile: str,
     show_preview: bool,
     mirror: bool = False,
     debug: bool = False,
@@ -36,7 +35,6 @@ def run_game(
         colors=colors,
         max_points_per_color=max_points_per_color,
         cam_index=cam_index,
-        profile=profile,
         show_preview=show_preview,
         mirror=mirror,
         debug=debug,
@@ -58,7 +56,7 @@ def run_game(
 
     tracker = ColorTracker(
         colors=colors, show_preview=show_preview, preview_name="Preview")
-    H_store = HomographyStore(profile_name=profile)
+    H_store = HomographyStore()
     H, corners_cam = H_store.load()
     if corners_cam:
         tracker.set_preview_corners_cam(corners_cam)

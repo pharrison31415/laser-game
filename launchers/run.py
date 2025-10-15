@@ -15,7 +15,6 @@ from engine.app.loop import run_game
 def main():
     parser = argparse.ArgumentParser(description="Laser Platform Launcher")
     parser.add_argument("--game", required=True, help="Game folder name under games/")
-    parser.add_argument("--profile", default="default", help="Calibration profile name")
     parser.add_argument("--preview", action="store_true", help="Show camera preview window")
     parser.add_argument("--colors", default="red", help='Comma list of colors to track (red,green,blue)')
     parser.add_argument("--max-points", type=int, default=3, help="Top-N points per color")
@@ -33,7 +32,6 @@ def main():
         colors=[c.strip() for c in args.colors.split(",") if c.strip()],
         max_points_per_color=args.max_points,
         cam_index=args.cam_index,
-        profile=args.profile,
         show_preview=args.preview,
         mirror=args.mirror,
         debug=args.debug,

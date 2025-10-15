@@ -9,7 +9,6 @@ class EngineConfig:
     colors: Sequence[str]
     max_points_per_color: int
     cam_index: int
-    profile: str
     show_preview: bool
     mirror: bool = False
     debug: bool = False
