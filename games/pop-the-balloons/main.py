@@ -16,7 +16,7 @@ class PopTheBalloons(Game):
         for _ in range(n):
             x = random.randint(60, w - 60)
             y = random.randint(60, h - 60)
-            r = random.randint(16, 28)
+            r = random.randint(30, 60)
             self.balloons.append([x, y, r, True])  # x,y,r,alive
 
     def on_update(self, dt_ms: float, frame: FrameData) -> None:
@@ -38,7 +38,7 @@ class PopTheBalloons(Game):
         draw_text(surface, f"Score: {self.score}", (20, 52), size=24)
         for (x, y, r, alive) in self.balloons:
             color = (50, 200, 80) if alive else (45, 45, 45)
-            pygame.draw.circle(surface, color, (int(x), int(y)), int(r), width=0)
+            pygame.draw.circle(surface, color, (int(x), int(y)), int(r), width=2)
 
     def on_unload(self) -> None:
         pass
