@@ -1,12 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Sequence, Tuple
+from typing import Tuple
 
 
 @dataclass
 class EngineConfig:
     screen_size: Tuple[int, int]
-    colors: Sequence[str]
     max_points_per_color: int
     cam_index: int
     show_preview: bool

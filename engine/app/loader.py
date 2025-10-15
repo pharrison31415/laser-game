@@ -2,7 +2,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import yaml
-from typing import Tuple, Dict, Any
+from typing import Dict, Any
 
 
 def load_game_manifest(game_root: Path) -> Dict[str, Any]:

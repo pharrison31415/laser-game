@@ -2,7 +2,7 @@ id: whack-a-mole
 title: Whack-a-Mole
 version: 0.1.0
 authors: ["You"]
-needs_colors: ["red"]
+colors: ["red"]
 max_points_per_color:
   red: 3
 description: "Green moles appear; shoot them with your laser. They shrink and vanish faster each stage."

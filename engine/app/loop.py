@@ -18,7 +18,6 @@ from engine.input.laser_input import LaserInput
 def run_game(
     game_id: str,
     screen_size: tuple[int, int],
-    colors: list[str],
     max_points_per_color: int,
     cam_index: int,
     show_preview: bool,
@@ -32,7 +31,6 @@ def run_game(
 
     cfg = EngineConfig(
         screen_size=screen_size,
-        colors=colors,
         max_points_per_color=max_points_per_color,
         cam_index=cam_index,
         show_preview=show_preview,
@@ -55,7 +53,8 @@ def run_game(
         return
 
     tracker = ColorTracker(
-        colors=colors, show_preview=show_preview, preview_name="Preview")
+        colors=manifest.get("colors", []),
+        show_preview=show_preview)
     H_store = HomographyStore()
     H, corners_cam = H_store.load()
     if corners_cam:

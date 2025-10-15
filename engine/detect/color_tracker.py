@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import Dict, List, Tuple
 import cv2
 import numpy as np
-import math
 import time
 
 

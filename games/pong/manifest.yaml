@@ -2,7 +2,7 @@ id: pong
 title: Laser Pong
 version: 0.1.0
 authors: [ "You" ]
-needs_colors: [ "red" ]
+colors: [ "red" ]
 max_points_per_color:
   red: 3
 description: "Two-player Pong. Each player moves their paddle by aiming a red laser on their half of the screen."
