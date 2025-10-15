@@ -8,6 +8,7 @@ from engine.api.config import EngineConfig
 from engine.api.frame_data import FrameData
 from engine.app.context import Context
 from engine.app.loader import load_game_manifest, load_game_module
+from engine.input.debug_points import DebugPointInjector
 from engine.video.camera import Camera
 from engine.detect.color_tracker import ColorTracker
 from engine.calib.homography import HomographyStore
@@ -23,6 +24,7 @@ def run_game(
     profile: str,
     show_preview: bool,
     mirror: bool = False,
+    debug: bool = False,
 ):
     pygame.init()
     pygame.display.set_caption(f"Laser Platform – {game_id}")
@@ -37,6 +39,7 @@ def run_game(
         profile=profile,
         show_preview=show_preview,
         mirror=mirror,
+        debug=debug,
     )
 
     # load game
@@ -61,6 +64,10 @@ def run_game(
         tracker.set_preview_corners_cam(corners_cam)
     else:
         tracker.set_preview_corners_from_H(H, screen_size)
+
+    # Debug
+    debug_manifest = manifest.get("debug_click", {}) or {}
+    injector = DebugPointInjector(cfg, debug_manifest)
 
     # Pass mirror to input layer so points are mirrored for gameplay
     input_layer = LaserInput(
@@ -101,26 +108,41 @@ def run_game(
                             tracker.set_preview_corners_cam(corners)
                         else:
                             tracker.set_preview_corners_from_H(H, screen_size)
+
+                # Debug injector
+                injector.handle_pygame_event(event, screen_size)
+
                 game.on_event(event)
 
             ok, frame_bgr = cam.read()
             if not ok:
                 continue
 
+            # Detect laser points
             detections = tracker.detect(frame_bgr)
             points_by_color = input_layer.map_and_select(
                 detections, screen_size)
+
+            # Merge synthetic debug points
+            synthetic = injector.emit_points()
+            for color, pts in synthetic.items():
+                # Append and re-trim to Top-N (keep engine’s selection rule)
+                merged = (points_by_color.get(color, []) + pts)
+                merged.sort(key=lambda p: p.intensity, reverse=True)
+                points_by_color[color] = merged[: cfg.max_points_per_color]
+
+            # Make frame data
             frame_data = FrameData(timestamp=time.time(),
                                    points_by_color=points_by_color)
 
-            # ---- draw to render_surface ----
+            # Draw to render_surface
             render_surface.fill((12, 14, 18))
             game.on_update(dt, frame_data)
             game.on_draw(render_surface)
             pygame.draw.rect(render_surface, (220, 220, 220),
                              (8, 8, screen_size[0] - 16, screen_size[1] - 16), 1)
 
-            # ---- present to window ----
+            # Present to window
             if mirror:
                 flipped = pygame.transform.flip(render_surface, True, False)
                 screen.blit(flipped, (0, 0))

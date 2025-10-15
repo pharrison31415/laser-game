@@ -9,3 +9,10 @@ description: "Starter template."
 instructions: "Point the laser at the screen."
 options:
   round_time_sec: 60
+debug_click:
+  enabled: true           # default false if missing
+  buttons:                # defaults shown
+    left: red             # one of: red|green|blue
+    right: green
+    middle: blue
+  intensity: 9999         # used for sorting Top-N (area proxy)

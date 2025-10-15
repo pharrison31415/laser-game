@@ -9,3 +9,8 @@ description: "Pop balloons by touching them with the laser dot."
 instructions: "Point at balloons to pop them. Press C to (re)calibrate."
 options:
   balloon_count: 12
+debug_click:
+  enabled: true
+  buttons:
+    left: red
+  intensity: 9999

@@ -12,3 +12,4 @@ class EngineConfig:
     profile: str
     show_preview: bool
     mirror: bool = False
+    debug: bool = False

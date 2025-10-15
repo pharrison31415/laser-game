@@ -7,3 +7,8 @@ max_points_per_color:
   red: 3
 description: "A 2 player shoot out"
 instructions: "Fire your laser at your respective half faster than the other player"
+debug_click:
+  enabled: true
+  buttons:
+    left: red
+  intensity: 9999

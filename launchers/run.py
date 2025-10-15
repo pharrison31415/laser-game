@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--screen", default="1280x720", help="Screen size WxH, e.g. 1280x720")
     parser.add_argument("--cam-index", type=int, default=0, help="OpenCV camera index")
     parser.add_argument("--mirror", action="store_true", help="Mirror the game window horizontally")
+    parser.add_argument("--debug", action="store_true", help="Enable mouse clicks to inject synthetic points")
     args = parser.parse_args()
 
     w, h = map(int, args.screen.lower().split("x"))
@@ -35,6 +36,7 @@ def main():
         profile=args.profile,
         show_preview=args.preview,
         mirror=args.mirror,
+        debug=args.debug,
     )
 
 
