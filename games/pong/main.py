@@ -12,18 +12,19 @@ from engine.render.shapes import draw_text
 # -----------------------------
 # Tuning constants
 # -----------------------------
-WINNING_SCORE = 7             # can be overridden by manifest.options.winning_score
+WINNING_SCORE_DEFAULT = 7
+
 PADDLE_W_RATIO = 0.014        # paddle width relative to screen width
 PADDLE_H_RATIO = 0.18         # paddle height relative to screen height
 PADDLE_EDGE_MARGIN = 18       # px from screen edges
+PADDLE_BORDER_RADIUS = 4
 
 BALL_SIZE = 12                # square ball (px)
 BALL_SPEED_START = 0.40       # px/ms initial speed
 BALL_SPEED_MAX = 1.4          # px/ms clamp
 BALL_SPEED_RAMP = 1.04        # multiply on each paddle hit
-BALL_ANGLE_MAX = math.radians(60)  # max deflection from horizontal
-
-SERVE_DELAY_MS = 900          # delay after a point before allowing serve
+BALL_ANGLE_MAX = math.radians(70)   # max deflection from horizontal
+SERVE_DELAY_MS = 900
 SERVE_MIN_ANGLE = math.radians(20)
 
 HUD_COLOR = (230, 230, 230)
@@ -43,9 +44,9 @@ class Paddle:
     def rect(self) -> pygame.Rect:
         return pygame.Rect(int(self.x - self.w // 2), int(self.y - self.h // 2), self.w, self.h)
 
-    def clamp(self, h: int):
+    def clamp(self, h_total: int):
         half = self.h // 2
-        self.y = max(half, min(h - half, self.y))
+        self.y = max(half, min(h_total - half, self.y))
 
 
 @dataclass
@@ -55,7 +56,9 @@ class Ball:
     vx: float
     vy: float
     size: int
-    speed: float  # magnitude of velocity
+    speed: float
+    prev_x: float = 0.0
+    prev_y: float = 0.0
 
 
 class Pong(Game):
@@ -65,52 +68,24 @@ class Pong(Game):
         self.w, self.h = ctx.screen_size
         self.mid_x = self.w // 2
 
-        # Read options
-        self.winning_score = int(manifest.get(
-            "options", {}).get("winning_score", WINNING_SCORE))
+        self.winning_score = int(manifest.get("options", {}).get(
+            "winning_score", WINNING_SCORE_DEFAULT))
 
-        # Geometry
         pw = max(8, int(self.w * PADDLE_W_RATIO))
         ph = max(34, int(self.h * PADDLE_H_RATIO))
         self.left = Paddle(x=PADDLE_EDGE_MARGIN + pw //
-                           2, y=self.h/2, w=pw, h=ph)
+                           2, y=self.h / 2, w=pw, h=ph)
         self.right = Paddle(
-            x=self.w - (PADDLE_EDGE_MARGIN + pw//2), y=self.h/2, w=pw, h=ph)
+            x=self.w - (PADDLE_EDGE_MARGIN + pw // 2), y=self.h / 2, w=pw, h=ph)
 
-        # Ball and scoring
         self.ball: Optional[Ball] = None
         self.score_l = 0
         self.score_r = 0
         self.last_point_time = 0
         self.serving_side = random.choice(("left", "right"))  # who serves next
-
-        self._serve(reset_speed=True)
-
-    # ------------- helpers -------------
-    def _serve(self, reset_speed: bool):
-        now = pygame.time.get_ticks()
-        self.last_point_time = now
-        # center ball, stopped until serve key/laser bump
-        speed = BALL_SPEED_START if reset_speed else min(
-            self._ball_speed(), BALL_SPEED_MAX)
-        # choose a shallow-ish angle away from serving paddle
-        angle = random.uniform(SERVE_MIN_ANGLE, BALL_ANGLE_MAX)
-        if self.serving_side == "left":
-            dir_x = 1
-        else:
-            dir_x = -1
-        angle = angle if dir_x > 0 else math.pi - angle
-        vx = math.cos(angle) * speed
-        vy = math.sin(angle) * speed
-        # stationary until serve: we'll set speed after serve
-        self.ball = Ball(x=self.w/2, y=self.h/2, vx=vx,
-                         vy=vy, size=BALL_SIZE, speed=0.0)
-
-        # Require a serve action (Space/Enter or a laser detected on serving half)
         self.awaiting_serve = True
 
-    def _ball_speed(self) -> float:
-        return BALL_SPEED_START if not self.ball else max(abs(self.ball.vx), abs(self.ball.vy), self.ball.speed)
+        self._serve(reset_speed=True)
 
     def _points_in_half(self, frame: FrameData, left: bool):
         reds = frame.points_by_color.get("red", [])
@@ -124,13 +99,41 @@ class Pong(Game):
             return None
         return float(points[0].y)  # brightest/first point
 
-    def _update_paddle_from_laser(self, paddle: Paddle, target_y: Optional[float]):
+    def _snap_paddle(self, paddle: Paddle, target_y: Optional[float]):
         if target_y is not None:
-            paddle.y = float(target_y)
+            paddle.y = target_y
             paddle.clamp(self.h)
 
+    def _serve(self, reset_speed: bool):
+        # Center ball; set direction but keep speed zero until serve trigger
+        angle = random.uniform(SERVE_MIN_ANGLE, BALL_ANGLE_MAX)
+        dir_x = 1 if self.serving_side == "left" else -1
+        angle = angle if dir_x > 0 else math.pi - angle
+        vx = math.cos(angle) * BALL_SPEED_START
+        vy = math.sin(angle) * BALL_SPEED_START
+        speed = BALL_SPEED_START if reset_speed else min(
+            self._ball_speed(), BALL_SPEED_MAX)
+
+        self.ball = Ball(
+            x=self.w / 2,
+            y=self.h / 2,
+            vx=vx,
+            vy=vy,
+            size=BALL_SIZE,
+            speed=speed,
+            prev_x=self.w / 2,
+            prev_y=self.h / 2,
+        )
+        self.last_point_time = pygame.time.get_ticks()
+        self.awaiting_serve = True
+
+    def _ball_speed(self) -> float:
+        b = self.ball
+        if not b:
+            return BALL_SPEED_START
+        return max(abs(b.vx), abs(b.vy), b.speed)
+
     def _serve_if_ready(self, frame: FrameData):
-        # Allow serve after delay; any red point on the serving half or Space/Enter
         if not self.awaiting_serve:
             return
         if pygame.time.get_ticks() - self.last_point_time < SERVE_DELAY_MS:
@@ -149,17 +152,12 @@ class Pong(Game):
             self.serving_side = "left"
         self._serve(reset_speed=True)
 
-    # ------------- loop hooks -------------
     def on_update(self, dt_ms: float, frame: FrameData) -> None:
-        # Paddle control
+        # Paddle control: snap instantly to laser Y when present; otherwise stay put
         lpts = self._points_in_half(frame, left=True)
         rpts = self._points_in_half(frame, left=False)
-
-        ly = self._laser_target_y(lpts)
-        ry = self._laser_target_y(rpts)
-
-        self._update_paddle_from_laser(self.left, ly)
-        self._update_paddle_from_laser(self.right, ry)
+        self._snap_paddle(self.left, self._laser_target_y(lpts))
+        self._snap_paddle(self.right, self._laser_target_y(rpts))
 
         # Serve logic
         self._serve_if_ready(frame)
@@ -169,57 +167,74 @@ class Pong(Game):
             return
         b = self.ball
 
-        # If awaiting serve, ball stays at center but we let vx/vy aim
+        # During serve, keep ball centered and keep prev in sync
         if self.awaiting_serve:
-            b.x = self.w/2
-            b.y = self.h/2
+            b.x = self.w / 2
+            b.y = self.h / 2
+            b.prev_x, b.prev_y = b.x, b.y
             return
 
-        # Integrate
+        # Save previous for swept tests then integrate
+        b.prev_x, b.prev_y = b.x, b.y
         b.x += b.vx * dt_ms
         b.y += b.vy * dt_ms
 
         # Top/bottom walls
-        if b.y <= 0 + b.size/2:
-            b.y = 0 + b.size/2
+        r = b.size / 2
+        if b.y <= r:
+            b.y = r
             b.vy = abs(b.vy)
-        elif b.y >= self.h - b.size/2:
-            b.y = self.h - b.size/2
+        elif b.y >= self.h - r:
+            b.y = self.h - r
             b.vy = -abs(b.vy)
 
-        # Left paddle collision
-        if b.x - b.size/2 <= self.left.rect().right and b.x > self.left.rect().right - 24:
-            if self.left.rect().colliderect(pygame.Rect(int(b.x - b.size/2), int(b.y - b.size/2), b.size, b.size)):
-                # reflect
-                offset = (b.y - self.left.y) / (self.left.h/2)
-                offset = max(-1.0, min(1.0, offset))
-                angle = offset * BALL_ANGLE_MAX
-                speed = min((math.hypot(b.vx, b.vy) or BALL_SPEED_START)
-                            * BALL_SPEED_RAMP, BALL_SPEED_MAX)
-                b.vx = abs(math.cos(angle) * speed)
-                b.vy = math.sin(angle) * speed
-                b.x = self.left.rect().right + b.size/2 + 0.5
+        # Paddle rects
+        left_rect = self.left.rect()
+        right_rect = self.right.rect()
 
-        # Right paddle collision
-        if b.x + b.size/2 >= self.right.rect().left and b.x < self.right.rect().left + 24:
-            if self.right.rect().colliderect(pygame.Rect(int(b.x - b.size/2), int(b.y - b.size/2), b.size, b.size)):
-                offset = (b.y - self.right.y) / (self.right.h/2)
-                offset = max(-1.0, min(1.0, offset))
-                angle = math.pi - (offset * BALL_ANGLE_MAX)
-                speed = min((math.hypot(b.vx, b.vy) or BALL_SPEED_START)
-                            * BALL_SPEED_RAMP, BALL_SPEED_MAX)
-                b.vx = -abs(math.cos(angle) * speed)
-                b.vy = math.sin(angle) * speed
-                b.x = self.right.rect().left - b.size/2 - 0.5
+        # Left paddle contact
+        if b.vx < 0:
+            face_x = left_rect.right
+            crossed = (b.prev_x - r) > face_x and (b.x - r) <= face_x
+            if crossed:
+                top = left_rect.top - r
+                bot = left_rect.bottom + r
+                # approximate y at impact with current y (good enough for arcade)
+                if top <= b.y <= bot:
+                    b.x = face_x + r + 0.5
+                    offset = (b.y - self.left.y) / (self.left.h / 2)  # -1..1
+                    offset = max(-1.0, min(1.0, offset))
+                    angle = offset * BALL_ANGLE_MAX
+                    speed = min((math.hypot(b.vx, b.vy) or BALL_SPEED_START)
+                                * BALL_SPEED_RAMP, BALL_SPEED_MAX)
+                    b.vx = abs(math.cos(angle) * speed)   # go RIGHT
+                    b.vy = math.sin(angle) * speed
+
+        # Right paddle contact
+        if b.vx > 0:
+            face_x = right_rect.left
+            crossed = (b.prev_x + r) < face_x and (b.x + r) >= face_x
+            if crossed:
+                top = right_rect.top - r
+                bot = right_rect.bottom + r
+                if top <= b.y <= bot:
+                    b.x = face_x - r - 0.5
+                    offset = (b.y - self.right.y) / (self.right.h / 2)  # -1..1
+                    offset = max(-1.0, min(1.0, offset))
+                    angle = math.pi - (offset * BALL_ANGLE_MAX)
+                    speed = min((math.hypot(b.vx, b.vy) or BALL_SPEED_START)
+                                * BALL_SPEED_RAMP, BALL_SPEED_MAX)
+                    b.vx = -abs(math.cos(angle) * speed)  # go LEFT
+                    b.vy = math.sin(angle) * speed
 
         # Scoring (ball out of bounds)
-        if b.x < -b.size:  # missed left
+        if b.x < -b.size:
             self._reset_point(scored_by="right")
-        elif b.x > self.w + b.size:  # missed right
+        elif b.x > self.w + b.size:
             self._reset_point(scored_by="left")
 
     def on_draw(self, surface: pygame.Surface) -> None:
-        # Midline
+        # Midline (dashed)
         for y in range(0, self.h, 20):
             pygame.draw.rect(surface, MIDLINE_COLOR,
                              (self.mid_x - 2, y, 4, 12))
@@ -229,29 +244,29 @@ class Pong(Game):
                   (self.mid_x - 80, 24), HUD_COLOR, size=48)
         draw_text(surface, f"{self.score_r}",
                   (self.mid_x + 48, 24), HUD_COLOR, size=48)
-        draw_text(surface, "Press Space/Enter to serve • C to calibrate",
+        draw_text(surface, "Space/Enter: serve • C: calibrate",
                   (20, self.h - 36), (200, 200, 200), size=20)
 
-        # Victory
+        # Victory screen
         if self.score_l >= self.winning_score or self.score_r >= self.winning_score:
             winner = "Left" if self.score_l > self.score_r else "Right"
             draw_text(surface, f"{winner} Wins!", (self.mid_x -
-                      110, self.h//2 - 20), WIN_FLASH_COLOR, size=36)
+                      110, self.h // 2 - 20), WIN_FLASH_COLOR, size=36)
             draw_text(surface, "Press Space/Enter to restart",
-                      (self.mid_x - 170, self.h//2 + 16), HUD_COLOR, size=22)
+                      (self.mid_x - 170, self.h // 2 + 16), HUD_COLOR, size=22)
             return
 
         # Paddles
-        pygame.draw.rect(surface, PADDLE_COLOR,
-                         self.left.rect(), border_radius=4)
-        pygame.draw.rect(surface, PADDLE_COLOR,
-                         self.right.rect(), border_radius=4)
+        pygame.draw.rect(surface, PADDLE_COLOR, self.left.rect(),
+                         border_radius=PADDLE_BORDER_RADIUS)
+        pygame.draw.rect(surface, PADDLE_COLOR, self.right.rect(),
+                         border_radius=PADDLE_BORDER_RADIUS)
 
-        # Ball (during serve sits at center)
+        # Ball
         if self.ball:
             b = self.ball
             pygame.draw.rect(surface, BALL_COLOR, (int(
-                b.x - b.size/2), int(b.y - b.size/2), b.size, b.size))
+                b.x - b.size / 2), int(b.y - b.size / 2), b.size, b.size))
 
         # Serve message
         if getattr(self, "awaiting_serve", False) and pygame.time.get_ticks() - self.last_point_time >= SERVE_DELAY_MS:
@@ -259,7 +274,6 @@ class Pong(Game):
                       HUD_COLOR, size=28)
 
     def on_event(self, event: pygame.event.Event) -> None:
-        # Space/Enter serves or restarts after victory
         if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_RETURN):
             if self.score_l >= self.winning_score or self.score_r >= self.winning_score:
                 # restart match
