@@ -192,46 +192,59 @@ class Pong(Game):
         left_rect = self.left.rect()
         right_rect = self.right.rect()
 
-        # Left paddle contact
-        if b.vx < 0:
-            face_x = left_rect.right
-            crossed = (b.prev_x - r) > face_x and (b.x - r) <= face_x
-            if crossed:
-                top = left_rect.top - r
-                bot = left_rect.bottom + r
-                # approximate y at impact with current y (good enough for arcade)
-                if top <= b.y <= bot:
-                    b.x = face_x + r + 0.5
-                    offset = (b.y - self.left.y) / (self.left.h / 2)  # -1..1
-                    offset = max(-1.0, min(1.0, offset))
-                    angle = offset * BALL_ANGLE_MAX
-                    speed = min((math.hypot(b.vx, b.vy) or BALL_SPEED_START)
-                                * BALL_SPEED_RAMP, BALL_SPEED_MAX)
-                    b.vx = abs(math.cos(angle) * speed)   # go RIGHT
-                    b.vy = math.sin(angle) * speed
-
-        # Right paddle contact
-        if b.vx > 0:
-            face_x = right_rect.left
-            crossed = (b.prev_x + r) < face_x and (b.x + r) >= face_x
-            if crossed:
-                top = right_rect.top - r
-                bot = right_rect.bottom + r
-                if top <= b.y <= bot:
-                    b.x = face_x - r - 0.5
-                    offset = (b.y - self.right.y) / (self.right.h / 2)  # -1..1
-                    offset = max(-1.0, min(1.0, offset))
-                    angle = math.pi - (offset * BALL_ANGLE_MAX)
-                    speed = min((math.hypot(b.vx, b.vy) or BALL_SPEED_START)
-                                * BALL_SPEED_RAMP, BALL_SPEED_MAX)
-                    b.vx = -abs(math.cos(angle) * speed)  # go LEFT
-                    b.vy = math.sin(angle) * speed
+        # Unified paddle contact (s=-1 for left, +1 for right)
+        self._paddle_contact(b, self.left,  left_rect,
+                             s=-1, face_x=left_rect.right)
+        self._paddle_contact(b, self.right, right_rect,
+                             s=+1, face_x=right_rect.left)
 
         # Scoring (ball out of bounds)
         if b.x < -b.size:
             self._reset_point(scored_by="right")
         elif b.x > self.w + b.size:
             self._reset_point(scored_by="left")
+
+    def _paddle_contact(self, b, paddle, rect, s: int, face_x: float) -> None:
+        """
+        s = -1 for left paddle (ball moving left -> reflect right)
+        s = +1 for right paddle (ball moving right -> reflect left)
+        """
+        r = b.size / 2
+        # Only test if ball moving toward this paddle
+        if (s < 0 and b.vx >= 0) or (s > 0 and b.vx <= 0):
+            return
+
+        # Swept AABB along x using the leading edge of the ball
+        prev_edge = b.prev_x + s * r
+        curr_edge = b.x + s * r
+        crossed = (s * prev_edge) < (s * face_x) and (s *
+                                                      curr_edge) >= (s * face_x)
+        if not crossed:
+            return
+
+        # Simple y-overlap check (arcade-style)
+        top = rect.top - r
+        bot = rect.bottom + r
+        if not (top <= b.y <= bot):
+            return
+
+        # Snap ball just outside the paddle face to avoid sticking
+        b.x = face_x - s * r - 0.5 * s
+
+        # Compute bounce angle from contact offset (-1..1), clamp to avoid extremes
+        offset = (b.y - paddle.y) / (paddle.h / 2)
+        offset = max(-1.0, min(1.0, offset))
+
+        # Angle: mirror across pi for right side so outgoing vx has correct sign
+        base = offset * BALL_ANGLE_MAX
+        angle = (math.pi - base) if s > 0 else base
+
+        # Speed ramp with cap
+        speed_in = math.hypot(b.vx, b.vy) or BALL_SPEED_START
+        speed_out = min(speed_in * BALL_SPEED_RAMP, BALL_SPEED_MAX)
+
+        b.vx = math.cos(angle) * speed_out  # sign comes from angle
+        b.vy = math.sin(angle) * speed_out
 
     def on_draw(self, surface: pygame.Surface) -> None:
         # Midline (dashed)
