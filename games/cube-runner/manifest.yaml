@@ -1,0 +1,17 @@
+id: cube-runner
+title: Cube Runner
+version: 0.1.0
+authors: [ "You" ]
+colors: [ "red" ]
+max_points_per_color:
+  red: 3
+description: "Auto-running platformer. Your cube races forward on its own; jump over spikes and onto pillars."
+instructions: |
+  Shine the red laser anywhere on the screen to jump. Hold it to keep jumping each time you land.
+  Hitting a spike or the side of a pillar ends the run. Shine the laser again to retry.
+  Space/Up also jumps. Press C to (re)calibrate.
+debug_click:
+  enabled: true
+  buttons:
+    left: red
+  intensity: 9999

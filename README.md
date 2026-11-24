@@ -40,6 +40,7 @@ Games are listed under the `games/` directory:
 - `quick-draw`: Shoot your half of the screen faster than your opponent. Be careful to not fire too early!
 - `whack-a-mole`: Shoot the green circles once they appear. Be quick -- they start to disappear quickly!
 - `pong`: The classic arcade game! Shoot lasers at each side of the screen to control each paddle.
+- `cube-runner`: Your cube runs on its own -- shine the laser anywhere to jump over spikes, pits, and pillars. Jump pads launch you, orbs give a mid-air jump, and hatched ceilings punish jumping. Endless and randomly generated; the longer you survive, the faster it gets!
 
 ## Launcher usage
 
