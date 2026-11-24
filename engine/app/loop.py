@@ -2,6 +2,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+import cv2
 import pygame
 
 from engine.api.config import EngineConfig
@@ -9,7 +10,7 @@ from engine.api.frame_data import FrameData
 from engine.app.context import Context
 from engine.app.loader import load_game_manifest, load_game_module
 from engine.input.debug_points import DebugPointInjector
-from engine.video.camera import Camera
+from engine.video.camera import Camera, CameraWorker
 from engine.detect.color_tracker import ColorTracker
 from engine.calib.homography import HomographyStore
 from engine.input.laser_input import LaserInput
@@ -22,6 +23,8 @@ def run_game(
     show_preview: bool,
     mirror: bool = False,
     debug: bool = False,
+    exposure: float | None = None,
+    stats: bool = False,
 ):
     pygame.init()
     pygame.display.set_caption(f"Laser Platform – {game_id}")
@@ -44,11 +47,16 @@ def run_game(
     game = module.get_game()
 
     # camera & detection
-    cam = Camera(index=cam_index, target_size=(1280, 720), fps=60)
+    # OpenCV's thread pool busy-waits between frames: with the default (one thread
+    # per core) the game used ~4 cores of CPU for no gain. Detection takes ~5 ms
+    # single-threaded, well within the 33 ms between camera frames.
+    cv2.setNumThreads(1)
+    cam = Camera(index=cam_index, target_size=(1280, 720), fps=30, exposure=exposure)
     if not cam.open():
         print("ERROR: could not open camera", file=sys.stderr)
         pygame.quit()
         return
+    print(f"camera: {cam.describe()}")
 
     tracker = ColorTracker(
         colors=manifest.get("colors", []),
@@ -59,6 +67,11 @@ def run_game(
         tracker.set_preview_corners_cam(corners_cam)
     else:
         tracker.set_preview_corners_from_H(H, screen_size)
+
+    # Capture + detection run on a background thread; the render loop below
+    # never waits for the camera.
+    worker = CameraWorker(cam, tracker.detect)
+    worker.start()
 
     # Debug
     debug_manifest = manifest.get("debug_click", {}) or {}
@@ -85,6 +98,7 @@ def run_game(
     game.on_load(ctx, manifest)
 
     running = True
+    frames, stats_t, stats_cam, stats_det = 0, time.time(), 0, 0
     try:
         while running:
             dt = clock.tick(60)
@@ -95,8 +109,10 @@ def run_game(
                     if event.key == pygame.K_ESCAPE:
                         running = False
                     elif event.key == pygame.K_c:
+                        worker.set_detection_enabled(False)
                         H = tracker.auto_calibrate(
-                            screen, screen_size, cam)
+                            screen, screen_size, worker)
+                        worker.set_detection_enabled(True)
                         corners = getattr(tracker, "_corners_cam", [])
                         H_store.save(H, corners_cam=corners if len(
                             corners) == 4 else None)
@@ -111,12 +127,10 @@ def run_game(
 
                 game.on_event(event)
 
-            ok, frame_bgr = cam.read()
-            if not ok:
-                continue
-
-            # Detect laser points
-            detections = tracker.detect(frame_bgr)
+            # Latest laser detections from the camera thread (may repeat
+            # between camera frames; the game renders at its own rate)
+            detections = worker.latest()
+            tracker.present_preview()
             points_by_color = input_layer.map_and_select(
                 detections, screen_size)
 
@@ -146,7 +160,20 @@ def run_game(
 
             pygame.display.flip()
 
+            if stats:
+                frames += 1
+                now = time.time()
+                if now - stats_t >= 5.0:
+                    span = now - stats_t
+                    cam_frames, det_frames = worker.frames_captured, worker.frames_detected
+                    print(f"render {frames / span:5.1f} fps   "
+                          f"camera {(cam_frames - stats_cam) / span:5.1f} fps   "
+                          f"detect {(det_frames - stats_det) / span:5.1f} fps")
+                    frames, stats_t = 0, now
+                    stats_cam, stats_det = cam_frames, det_frames
+
     finally:
+        worker.stop()
         cam.close()
         tracker.teardown()
         game.on_unload()

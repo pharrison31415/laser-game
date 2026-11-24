@@ -20,6 +20,10 @@ def main():
     parser.add_argument("--cam-index", type=int, default=0, help="OpenCV camera index")
     parser.add_argument("--mirror", action="store_true", help="Mirror the game window horizontally")
     parser.add_argument("--debug", action="store_true", help="Enable mouse clicks to inject synthetic points")
+    parser.add_argument("--exposure", type=float, default=None,
+                        help="Fixed camera exposure in driver units (V4L2: 100us steps, e.g. 150 = 15ms). "
+                             "Default: camera auto exposure")
+    parser.add_argument("--stats", action="store_true", help="Print render and camera fps every 5 seconds")
     args = parser.parse_args()
 
     w, h = map(int, args.screen.lower().split("x"))
@@ -31,6 +35,8 @@ def main():
         show_preview=args.preview,
         mirror=args.mirror,
         debug=args.debug,
+        exposure=args.exposure,
+        stats=args.stats,
     )
 
 

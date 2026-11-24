@@ -48,6 +48,7 @@ Games are listed under the `games/` directory:
 $ uv run launchers/run.py -h
 usage: run.py [-h] --game GAME [--preview] [--screen SCREEN]
               [--cam-index CAM_INDEX] [--mirror] [--debug]
+              [--exposure EXPOSURE] [--stats]
 
 Laser Platform Launcher
 
@@ -60,7 +61,14 @@ options:
                         OpenCV camera index
   --mirror              Mirror the game window horizontally
   --debug               Enable mouse clicks to inject synthetic points
+  --exposure EXPOSURE   Fixed camera exposure in driver units (V4L2: 100us
+                        steps, e.g. 150 = 15ms). Default: camera auto exposure
+  --stats               Print render and camera fps every 5 seconds
 ```
+
+If the camera runs slowly in a dim room (check with `--stats`), auto exposure is
+probably lengthening each frame: try `--exposure 150` and adjust until the laser
+dot is still detected reliably.
 
 ## Managing dependencies
 

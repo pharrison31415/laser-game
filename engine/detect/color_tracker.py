@@ -28,6 +28,7 @@ class ColorTracker:
         self.show_preview = show_preview
         self.preview_name = preview_name
         self._corners_cam: List[Tuple[int, int]] = []
+        self._preview_img = None  # built by detect(), shown by present_preview()
 
         if self.show_preview:
             cv2.namedWindow(self.preview_name, cv2.WINDOW_NORMAL)
@@ -77,7 +78,7 @@ class ColorTracker:
         """
         hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
         out: Dict[str, List[Tuple[int, int, float]]] = {}
-        overlay = frame_bgr.copy()
+        overlay = frame_bgr.copy() if self.show_preview else None
 
         for color in self.colors:
             mask = self._mask_for_color(hsv, color)
@@ -126,10 +127,16 @@ class ColorTracker:
                 overlay, time.strftime("%H:%M:%S"),
                 (12, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA
             )
-            cv2.imshow(self.preview_name, overlay)
-            cv2.waitKey(1)
+            self._preview_img = overlay
 
         return out
+
+    def present_preview(self):
+        """Show the latest preview image. Call from the main thread (HighGUI is
+        not thread-safe); detect() may run on the camera thread."""
+        if self.show_preview and self._preview_img is not None:
+            cv2.imshow(self.preview_name, self._preview_img)
+            cv2.waitKey(1)
 
     def auto_calibrate(self, screen, screen_size, camera) -> np.ndarray:
         """
@@ -171,6 +178,7 @@ class ColorTracker:
                 if not ok:
                     continue
                 detections = self.detect(frame)
+                self.present_preview()
                 red_pts = detections.get("red", [])
                 cam_pt = (int(red_pts[0][0]), int(
                     red_pts[0][1])) if red_pts else None
