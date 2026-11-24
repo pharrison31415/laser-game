@@ -12,20 +12,20 @@ He presented his work at PyCon 2008 -- you can watch his talk on [YouTube](https
 
 ## Quick Start
 
-Clone the repository, start a virtual environemnt, and install dependencies:
+This project uses [uv](https://docs.astral.sh/uv/) to manage Python and dependencies. [Install uv](https://docs.astral.sh/uv/getting-started/installation/), then clone the repository and install dependencies:
 
 ```
 git clone https://github.com/pharrison31415/laser-game.git
 cd laser-game
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
+
+`uv sync` creates `.venv/` and installs the exact versions pinned in `uv.lock`. It also fetches a suitable Python (3.13+) if you don't have one.
 
 Run pong normally (or include `--debug` to emulate laser dots with mouse clicks):
 
 ```
-python launchers/run.py --preview --game pong
+uv run launchers/run.py --preview --game pong
 ```
 
 Once the program begins, place the game window onto an external display placed in front of the webcam. Press `c` to calibrate. Once it is finished, shoot your lasers at the external display!
@@ -44,7 +44,7 @@ Games are listed under the `games/` directory:
 ## Launcher usage
 
 ```
-$ python launchers/run.py -h
+$ uv run launchers/run.py -h
 usage: run.py [-h] --game GAME [--preview] [--screen SCREEN]
               [--cam-index CAM_INDEX] [--mirror] [--debug]
 
@@ -59,4 +59,15 @@ options:
                         OpenCV camera index
   --mirror              Mirror the game window horizontally
   --debug               Enable mouse clicks to inject synthetic points
+```
+
+## Managing dependencies
+
+Dependencies are declared in `pyproject.toml` and locked in `uv.lock` (commit both).
+
+```
+uv add <package>          # add a dependency
+uv remove <package>       # remove one
+uv lock --upgrade         # upgrade everything to the latest allowed versions
+uv sync                   # make .venv match the lockfile
 ```
