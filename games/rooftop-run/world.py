@@ -4,7 +4,6 @@ Rooftop Run world simulation (pure Python, no pygame).
 Units: 1 U ~ 1 m, y is up. The runner's feet are at (x .. x + RUNNER_W, y).
 """
 import math
-import os
 import random
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -28,6 +27,8 @@ class Building:
     sink_v: float = 0.0
     shattered: bool = False        # window: glass broken
     exit_shattered: bool = False   # window: the pane on the far side, smashed on the way out
+    max_drop: float = 0.0          # crumble: how far it can have sunk when you leave it
+    collapsed: bool = False        # crumble: knocked down by running into it
     seed: int = 0                  # for facade decoration
 
     @property
@@ -53,7 +54,7 @@ class Debris:
     y: Optional[float] = None      # None until it starts falling
     vy: float = 0.0
     landed: bool = False
-    hit: bool = False
+    variant: int = 0               # which piece of alien tech it is (art only)
 
 
 @dataclass
@@ -135,19 +136,14 @@ class World:
     def _difficulty(self, x: float) -> float:
         return min(1.0, x / 2000.0)
 
-    def _gen_speed(self, prev: Building, crates_on_prev: int, debris_on_prev: bool) -> float:
+    def _gen_speed(self, prev: Building, crates_on_prev: int) -> float:
         """A pessimistic speed for judging the next gap: no further acceleration,
-        a possible hard-landing stumble, and every hazard on the previous roof hit."""
+        a possible hard-landing stumble, and every crate on the previous roof hit."""
         v = self.speed * HARD_LANDING_SLOWDOWN
         v *= CRATE_SLOWDOWN ** crates_on_prev
-        if debris_on_prev:
-            v *= DEBRIS_SLOWDOWN
         return max(SPEED_FLOOR, v)
 
     def _pick_kind(self, x: float, prev: Building) -> str:
-        # TEMPORARY playtest switch: ROOFTOP_CRUMBLE_TEST=1 -> roof, crumble, roof, crumble, ...
-        if os.environ.get("ROOFTOP_CRUMBLE_TEST"):
-            return "crumble" if prev.kind == "roof" else "roof"
         options, weights = ["roof"], [5.0]
         if prev.kind == "roof":
             if self._unlocked("window", x):
@@ -165,8 +161,7 @@ class World:
             x = prev.right
             d = self._difficulty(x)
             n_crates = sum(1 for c in self.crates if prev.x <= c.x < prev.right)
-            has_debris = any(db.building is prev for db in self.debris)
-            v = self._gen_speed(prev, n_crates, has_debris)
+            v = self._gen_speed(prev, n_crates)
             kind = self._pick_kind(x, prev)
             seed = r.randrange(1 << 30)
 
@@ -180,12 +175,12 @@ class World:
                 self.buildings.append(b)
                 continue
 
-            takeoff = prev.top - (CRUMBLE_DROP_BUDGET if prev.kind == "crumble" else 0.0)
+            takeoff = prev.top - prev.max_drop
             lo_top = max(TOP_MIN, takeoff - STEP_DOWN_MAX)
             hi_top = min(TOP_MAX, takeoff + STEP_UP_MAX * (0.5 + 0.5 * d))
             if kind == "crumble":
-                # high enough that even after sinking the full budget, the lowest next roof is a normal step up
-                lo_top = min(max(lo_top, TOP_MIN + CRUMBLE_DROP_BUDGET - STEP_UP_MAX), hi_top)
+                # prefer high crumbling roofs: they have room to sink, so they can be long
+                lo_top = min(max(lo_top, hi_top - 3.0), hi_top)
             top = r.uniform(lo_top, hi_top) if hi_top > lo_top else lo_top
             t = air_time(top - takeoff)
             reach = v * t if t else 0.0
@@ -195,10 +190,19 @@ class World:
             if kind == "girder":
                 w = max(4.0, v * r.uniform(0.6, 1.2))
             elif kind == "crumble":
-                w = max(6.0, v * r.uniform(0.8, CRUMBLE_W_MAX))
+                # long enough to feel, short enough that after sinking for its whole
+                # length the next roof (at worst TOP_MIN) is at most a half step up
+                room = top - (TOP_MIN - STEP_UP_MAX * 0.5)
+                secs = min(r.uniform(CRUMBLE_S_MIN, CRUMBLE_S_MAX),
+                           crumble_time_for_drop(room) - CRUMBLE_SLACK_S)
+                secs = max(0.3, secs)
+                w = v * secs
             else:
                 w = max(12.0, v * r.uniform(1.6, 4.0))
             b = Building(x + gap, w, top, kind, seed=seed)
+            if kind == "crumble":
+                # time on it is at most w / v (v is a pessimistic speed)
+                b.max_drop = crumble_drop(w / v + CRUMBLE_SLACK_S)
             self.buildings.append(b)
 
             if kind == "roof":
@@ -225,7 +229,7 @@ class World:
                 if r.random() < 0.25:  # stacked pair
                     self.crates.append(Crate(cx, b.top + CRATE_SIZE))
         if self._unlocked("debris", b.x) and b.w > 16 and r.random() < 0.35:
-            self.debris.append(Debris(b.x + b.w * r.uniform(0.35, 0.7), b))
+            self.debris.append(Debris(b.x + b.w * r.uniform(0.35, 0.7), b, variant=r.randrange(3)))
         if r.random() < 0.35:
             self._add_birds(b)
 
@@ -282,8 +286,10 @@ class World:
             if b.kind == "crumble" and b.touched_t is not None:
                 b.touched_t += dt
                 if b.touched_t > CRUMBLE_DELAY_S:
-                    b.sink_v += CRUMBLE_ACCEL * dt
+                    b.sink_v = min(CRUMBLE_MAX_SINK, b.sink_v + CRUMBLE_ACCEL * dt)
                     b.top -= b.sink_v * dt
+                    if b is self.support and p.grounded:
+                        p.y = b.top      # standing on it: ride it down (it sinks faster than one step of falling)
 
         # integrate
         prev_y = p.y
@@ -349,6 +355,10 @@ class World:
                     b.exit_shattered = True
                     self.events.append(("glass_exit", b.right, b.top))
             if p.y < b.top - EPS and p.y + RUNNER_H > b.bottom + EPS:
+                if b.kind == "crumble":
+                    b.collapsed = True
+                    self.events.append(("collapse", b.x, b.top, b.right))
+                    return self._die("crumble")
                 return self._die("wall")
 
         if p.y < FALL_DEATH_Y:
@@ -362,8 +372,9 @@ class World:
                 self.events.append(("crate", c.x, c.y))
         for db in self.debris:
             if db.y is None:
-                if p.x > db.x - self.speed * 1.6:
+                if p.x > db.x - self.speed * DEBRIS_LEAD_S:
                     db.y = db.building.top + 24.0
+                    db.vy = DEBRIS_DROP_VY
                     self.events.append(("debris_warn", db.x, db.building.top))
                 continue
             if not db.landed:
@@ -372,12 +383,9 @@ class World:
                 if db.y <= db.building.top:
                     db.y, db.landed = db.building.top, True
                     self.events.append(("debris_land", db.x, db.y))
-            if not db.hit and self._overlaps(db.x, db.y, DEBRIS_SIZE, DEBRIS_SIZE):
-                db.hit = True
-                self.speed = max(SPEED_FLOOR, self.speed * DEBRIS_SLOWDOWN)
-                p.stumble = STUMBLE_S
-                p.rolling = False
-                self.events.append(("debris_hit", db.x, db.y))
+            if self._overlaps(db.x, db.y, DEBRIS_SIZE, DEBRIS_SIZE):
+                # falling on you: mist. Already on the roof: you ran into it
+                return self._die("debris_wall" if db.landed else "debris")
 
     def _overlaps(self, x, y, w, h) -> bool:
         p = self.runner

@@ -7,7 +7,7 @@ from typing import Optional
 
 from engine.api import Game, FrameData
 from engine.app.context import Context
-from engine.render.shapes import draw_text
+from engine.render.shapes import draw_text, draw_hold_target
 
 from .const import *
 
@@ -293,39 +293,19 @@ class QuickDraw(Game):
 
     def _draw_hold_targets(self, surface: pygame.Surface, dim: bool = False):
         # Left
-        lw = 4
-        color_left = START_TARGET_COLOR if not dim else (90, 90, 90)
-        pygame.draw.circle(surface, color_left, (self.left_hold.cx,
-                           self.left_hold.cy), self.left_hold.r, lw)
-        # pass held progress OR full ring if latched
-        self._draw_hold_ring(
-            surface, self.left_hold.cx, self.left_hold.cy, self.left_hold.r,
-            HOLD_TO_READY_MS if self.left_ready_latched else self.left_hold_ms
-        )
-
-        # Right
-        color_right = START_TARGET_COLOR if not dim else (90, 90, 90)
-        pygame.draw.circle(surface, color_right, (self.right_hold.cx,
-                           self.right_hold.cy), self.right_hold.r, lw)
-        self._draw_hold_ring(
-            surface, self.right_hold.cx, self.right_hold.cy, self.right_hold.r,
-            HOLD_TO_READY_MS if self.right_ready_latched else self.right_hold_ms
-        )
+        color = START_TARGET_COLOR if not dim else (90, 90, 90)
+        for hold, latched, held_ms in ((self.left_hold, self.left_ready_latched, self.left_hold_ms),
+                                       (self.right_hold, self.right_ready_latched, self.right_hold_ms)):
+            # full ring once latched
+            frac = 1.0 if latched else (min(1.0, held_ms / HOLD_TO_READY_MS) if HOLD_TO_READY_MS > 0 else 1.0)
+            draw_hold_target(surface, (hold.cx, hold.cy), hold.r, frac,
+                             color=color, ring_color=START_RING_COLOR)
 
         # Labels
         draw_text(surface, "Hold to Ready", (self.left_hold.cx - 90,
                   self.left_hold.cy - self.left_hold.r - 36), HUD_COLOR, size=24)
         draw_text(surface, "Hold to Ready", (self.right_hold.cx - 90,
                   self.right_hold.cy - self.right_hold.r - 36), HUD_COLOR, size=24)
-
-    def _draw_hold_ring(self, surface, cx, cy, r, held_ms):
-        pct = min(1.0, held_ms / HOLD_TO_READY_MS) if HOLD_TO_READY_MS > 0 else 1.0
-        ring_r = int(r + 10)
-        rect = pygame.Rect(cx - ring_r, cy - ring_r, ring_r*2, ring_r*2)
-        start_angle = 0.5 * math.pi
-        end_angle = start_angle + 2 * math.pi * pct
-        pygame.draw.arc(surface, START_RING_COLOR,
-                        rect, start_angle, end_angle, 2)
 
     def _draw_ready_status(self, surface):
         ltext = "P1 Ready" if self.left_ready_latched else "P1 Holding..."

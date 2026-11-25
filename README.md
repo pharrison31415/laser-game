@@ -52,9 +52,9 @@ Games are listed under the `games/` directory:
   The level is a chain of ~10-second sections (Rooftops, Cave, Pillar Hop, Spike Rhythm, ...);
   see [Drawing cube-runner sections](#drawing-cube-runner-sections).
 - `rooftop-run`: One-button rooftop runner. You never stop running and keep speeding up; shine the
-  laser to jump the gaps between buildings, holding it longer to jump higher. Crates and falling debris
-  slow you down; crash through windows, cross girders, and get off crumbling roofs fast. Falling or
-  hitting a wall ends the run.
+  laser to jump the gaps between buildings, holding it longer to jump higher. Crates slow you
+  down; crash through windows, cross girders, and get off crumbling roofs fast. Falling, hitting a
+  wall, or getting hit by falling wreckage ends the run.
 
 ## Launcher usage
 
@@ -105,7 +105,7 @@ min_d: 0.2
 ```
 
 - `title` is the section's display name (not shown in the game). `min_d` is the difficulty
-  (0 to 1, reached at distance 500) from which it can appear. A blank line ends the header.
+  (0 to 1, reached at distance 350) from which it can appear. A blank line ends the header.
 - One character is one cube. The last line is the ground: `-` is ground, a space is a pit.
 - `#` is a block (over a pit it becomes a pillar), `=` is a deadly hatched ceiling, `^` is a spike,
   `v` is a hanging spike, `J` is a jump pad and `o` is an orb.

@@ -1,3 +1,4 @@
+import math
 # Units: 1 U ~ 1 metre. The runner is RUNNER_W x RUNNER_H. y is up; roofs sit at
 # heights of a few U up to ~16 U; falling below FALL_DEATH_Y is a fall to the street.
 
@@ -31,18 +32,37 @@ JUMP_BUFFER_S = 0.12             # a press this long before landing still jumps
 CRATE_SIZE = 0.8
 CRATE_SLOWDOWN = 0.8             # speed multiplier when you smash a crate
 DEBRIS_SIZE = 1.3
-DEBRIS_SLOWDOWN = 0.7            # being hit by / running into fallen debris
-DEBRIS_GRAVITY = 40.0
+DEBRIS_GRAVITY = 80.0
+DEBRIS_DROP_VY = -10.0           # it's thrown down, not just dropped
+DEBRIS_LEAD_S = 1.15             # starts falling when you're this many seconds of running away
 HARD_LANDING_VY = -24.0          # landing faster than this makes you stumble...
 HARD_LANDING_SLOWDOWN = 0.9      # ...and lose some speed
 STUMBLE_S = 0.35
 WINDOW_CEILING = 5.0             # window buildings: ceiling height above the floor inside
 CRUMBLE_DELAY_S = 0.12           # crumbling buildings start sinking this long after you land
-CRUMBLE_ACCEL = 9.0              # U/s^2 sink acceleration
-CRUMBLE_W_MAX = 1.15             # crumbling roofs are at most this many seconds of running long
-# how far the roof can have sunk when you leave it (running its whole length, plus
-# a little slack); the generator places the next building for a takeoff that low
-CRUMBLE_DROP_BUDGET = 0.5 * CRUMBLE_ACCEL * (CRUMBLE_W_MAX + 0.1 - CRUMBLE_DELAY_S) ** 2
+CRUMBLE_ACCEL = 9.0              # U/s^2 sink acceleration...
+CRUMBLE_MAX_SINK = 5.0           # ...up to this sink speed (U/s), so long roofs don't plummet
+CRUMBLE_S_MIN = 0.6              # crumbling roofs are this many seconds of running long...
+CRUMBLE_S_MAX = 2.6              # ...at most (less if the roof is too low to sink that far)
+CRUMBLE_SLACK_S = 0.1            # extra sink time the generator allows for
+
+
+def crumble_drop(t: float) -> float:
+    """How far a crumbling roof has sunk t seconds after you land on it."""
+    t = max(0.0, t - CRUMBLE_DELAY_S)
+    ta = CRUMBLE_MAX_SINK / CRUMBLE_ACCEL
+    if t < ta:
+        return 0.5 * CRUMBLE_ACCEL * t * t
+    return 0.5 * CRUMBLE_ACCEL * ta * ta + CRUMBLE_MAX_SINK * (t - ta)
+
+
+def crumble_time_for_drop(drop: float) -> float:
+    """Inverse of crumble_drop."""
+    ta = CRUMBLE_MAX_SINK / CRUMBLE_ACCEL
+    d_a = 0.5 * CRUMBLE_ACCEL * ta * ta
+    if drop <= d_a:
+        return CRUMBLE_DELAY_S + math.sqrt(2 * max(0.0, drop) / CRUMBLE_ACCEL)
+    return CRUMBLE_DELAY_S + ta + (drop - d_a) / CRUMBLE_MAX_SINK
 GIRDER_THICKNESS = 0.6
 FALL_DEATH_Y = -6.0
 
@@ -80,6 +100,20 @@ SKY_FAR = (17, 19, 24)           # parallax skyline layers (barely above BG)
 SKY_NEAR = (22, 25, 31)
 BUILDING_FILL = (46, 50, 60)
 FACADE_LINE = (60, 64, 76)       # window grid on facades
+BUILDING_SHADE = (37, 40, 49)    # recesses, shadow lines, the shaded side of a building
+BUILDING_LIGHT = (58, 62, 74)    # floor bands, sills, cornice coping
+WINDOW_DARK = (30, 33, 41)
+WINDOW_LIT_DIM = (62, 66, 76)
+WINDOW_LIT = (80, 84, 94)
+FIRE_ESCAPE = (28, 30, 37)
+CLUTTER = (31, 34, 42)           # roof clutter silhouettes (behind the roof line)
+CLUTTER_LINE = (42, 46, 56)
+BEACON = (120, 122, 128)         # blinking mast light (gray, never red)
+SKY_FAR_WIN = (24, 27, 33)       # skyline window speckle
+SKY_NEAR_WIN = (32, 35, 43)
+SKY_BEACON = (85, 87, 94)
 INTERIOR = (32, 36, 45)           # inside a window building
 GLASS = (110, 130, 140)
 ACCENT = (50, 200, 120)          # the runner
+ALIEN = (140, 225, 255)          # falling wreckage: outlined alien tech
+ALIEN_DIM = (55, 100, 125)

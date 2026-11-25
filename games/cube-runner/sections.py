@@ -95,7 +95,7 @@ THEMES = {
 
 # A = an easy motif, B = a harder one, C = the hardest unlocked (the climax)
 PHRASES = ["AABABC", "ABABCC", "AABBAC", "ABACBC"]
-RHYTHM_EXTRA = [0.5, 1.5, 3.0]     # runway added to the minimum gap: tight / medium / relaxed
+RHYTHM_EXTRA = [0.0, 0.5, 1.5]     # runway added to the minimum gap: tight / medium / relaxed
 
 
 def _by_name():
@@ -117,10 +117,11 @@ def build_theme(theme: str, rng, d: float, x0: float):
     b = rng.choice(rest[:-1] or rest)
     c = motifs[-1]
     # each motif is built once and repeated verbatim: repetition is what makes it a rhythm
-    built = {k: m[2](rng, d) for k, m in (("A", a), ("B", b), ("C", c))}
     phrase = rng.choice(PHRASES)
-
     est_len = 6 * (6 + min_gap_at(x0))
+    v = speed_at(x0 + est_len)          # the fastest it will be played at
+    built = {k: m[2](rng, d, v=v) for k, m in (("A", a), ("B", b), ("C", c))}
+
     gap = min_gap_at(x0 + est_len) + rng.choice(RHYTHM_EXTRA)   # fixed: a steady beat
     parts, x = [], 0.0
     for i, letter in enumerate(phrase):

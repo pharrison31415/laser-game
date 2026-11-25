@@ -8,10 +8,12 @@ import pygame
 
 from engine.api import Game, FrameData
 from engine.app.context import Context
+from engine.render.shapes import draw_hold_target
 
 from .const import *
 from .world import World, RUNNER_W, RUNNER_H
 from . import sprites
+from . import scenery
 
 
 class State(Enum):
@@ -32,7 +34,13 @@ class Particle:
     gravity: float = 30.0
 
 
-DEATH_TEXT = {"fell": "then fell to the street.", "wall": "then ran into a wall."}
+DEATH_TEXT = {
+    "fell": "then fell to the street.",
+    "wall": "then ran into a wall.",
+    "crumble": "then knocked down a building.",
+    "debris": "then got turned into a fine mist.",
+    "debris_wall": "before you were turned into a fine mist.",
+}
 
 
 class RooftopRun(Game):
@@ -51,6 +59,10 @@ class RooftopRun(Game):
         self.particles: List[Particle] = []
         self._fonts = {}
         self._shake_x = self._shake_y = 0.0
+        self._facades = scenery.Facades()
+        self._clutter = {}
+        self._sky = [scenery.Skyline(0, SKY_FAR, SKY_FAR_WIN, 9.0, (6, 20)),
+                     scenery.Skyline(1, SKY_NEAR, SKY_NEAR_WIN, 7.0, (3, 14))]
         self._reset()
 
     def _reset(self):
@@ -148,16 +160,16 @@ class RooftopRun(Game):
                 self._reset()
                 self.need_release = True
 
-    def _burst(self, x, y, n, color, speed, size, up=0.0, gravity=30.0, carry=0.3):
+    def _burst(self, x, y, n, color, speed, size, up=0.0, gravity=30.0, carry=0.3, life=1.0):
         for _ in range(n):
             a = random.uniform(0, 2 * math.pi)
             s = random.uniform(0.3, 1.0) * speed
             self.particles.append(Particle(x, y, math.cos(a) * s + self.world.speed * carry,
-                                           math.sin(a) * s + up, random.uniform(0.4, 1.0),
+                                           math.sin(a) * s + up, random.uniform(0.4, 1.0) * life,
                                            color, random.uniform(0.5, 1.0) * size, gravity))
 
     def _consume_events(self):
-        for kind, x, y in self.world.events:
+        for kind, x, y, *extra in self.world.events:
             if kind == "glass":
                 self._burst(x, y + 2.5, 26, GLASS, 8, 0.25, up=2)
                 self.shake = max(self.shake, 0.25)
@@ -176,14 +188,34 @@ class RooftopRun(Game):
             elif kind == "debris_land":
                 self._burst(x + DEBRIS_SIZE / 2, y, 16, DIM, 6, 0.3, up=3)
                 self.shake = max(self.shake, 0.45)
-            elif kind == "debris_hit":
-                self.shake = max(self.shake, 0.5)
+            elif kind == "collapse":
+                self._collapse(x, y, extra[0])
             elif kind == "crumble":
                 self.shake = max(self.shake, 0.2)
             elif kind == "death":
-                self._burst(x + RUNNER_W / 2, y + RUNNER_H / 2, 30, ACCENT, 9, 0.25, up=3)
+                if self.world.death in ("debris", "debris_wall"):
+                    # a fine green mist: lots of tiny, slow, drifting specks
+                    for _ in range(4):
+                        self._burst(x + RUNNER_W / 2, y + RUNNER_H / 2, 60, ACCENT, 5, 0.07,
+                                    up=1, gravity=-0.5, carry=0.15, life=2.2)
+                    self.shake = max(self.shake, 0.6)
+                else:
+                    self._burst(x + RUNNER_W / 2, y + RUNNER_H / 2, 30, ACCENT, 9, 0.25, up=3)
                 self.shake = max(self.shake, 0.5)
         self.world.events.clear()
+
+    def _collapse(self, x0: float, top: float, x1: float):
+        """A knocked-down building: the whole visible block bursts into rubble."""
+        bottom = top - (self.h - self.roof_sy) / self.ppu - 4
+        n = int(min(260, (x1 - x0) * (top - bottom) * 0.25))
+        for _ in range(n):
+            px, py = random.uniform(x0, x1), random.uniform(bottom, top)
+            near_top = (py - bottom) / max(1.0, top - bottom)
+            self.particles.append(Particle(
+                px, py, random.uniform(-3, 6) + self.world.speed * 0.2, random.uniform(0, 8) * near_top,
+                random.uniform(0.8, 1.8), random.choice((BUILDING_FILL, FACADE_LINE, DIM)),
+                random.uniform(0.2, 0.6), gravity=35.0))
+        self.shake = max(self.shake, 0.9)
 
     def _update_particles(self, dt: float):
         for pt in self.particles:
@@ -198,8 +230,11 @@ class RooftopRun(Game):
         amp = self.shake * self.ppu * 0.4
         self._shake_x = random.uniform(-amp, amp) if amp > 0.5 else 0.0
         self._shake_y = random.uniform(-amp, amp) if amp > 0.5 else 0.0
-        self._draw_skyline(surface, 0.15, SKY_FAR, 9.0, (6, 20), 0.35)
-        self._draw_skyline(surface, 0.4, SKY_NEAR, 7.0, (3, 14), 0.6)
+        self._facades.new_frame()
+        for sky in self._sky:
+            sky.new_frame()
+        self._draw_skyline(surface, self._sky[0], 0.15, 0.35)
+        self._draw_skyline(surface, self._sky[1], 0.4, 0.6)
         self._draw_buildings(surface)
         self._draw_props(surface)
         if self.state != State.Dead:
@@ -210,104 +245,129 @@ class RooftopRun(Game):
         self._draw_laser_marker(surface)
         self._draw_hud(surface)
 
-    def _draw_skyline(self, surface, factor, color, spacing, heights, vfactor):
+    def _draw_skyline(self, surface, sky, factor, vfactor):
         """Distant city silhouettes, scrolling slower than the rooftops (parallax)."""
         ppu = self.base_ppu * (0.5 + 0.5 * self.zoom)
-        cam_x = self.world.runner.x * factor
-        first = int(cam_x / spacing) - 2
         base_y = self.h - (self.cam_y * vfactor * 0.3) * ppu * 0.2
-        for i in range(first, first + int(self.w / (spacing * ppu)) + 4):
-            r = random.Random(i * 7919 + int(factor * 1000))
-            bw = r.uniform(0.6, 1.0) * spacing
-            bh = r.uniform(*heights)
-            x = (i * spacing - cam_x) * ppu + self.runner_sx * 0.5
-            top = base_y - bh * ppu * 0.6 - self.h * 0.1
-            pygame.draw.rect(surface, color, (int(x), int(top), int(bw * ppu) + 1, self.h))
+        scenery.draw_skyline(surface, sky, factor, ppu, self.world.runner.x * factor, base_y,
+                             self.runner_sx, self.h, self.w, vfactor, self.world.time)
 
     def _visible(self, x: float, w: float) -> bool:
         sx = self._sx(x)
         return sx < self.w and sx + w * self.ppu > 0
 
-    def _facade(self, surface, b, x0, x1, top_wy, bottom_sy):
-        """Grid of dark window frames on a building face."""
-        ppu = self.ppu
-        col, row = 2.0, 2.6
-        if ppu * col < 10:
-            return
-        y = top_wy - 1.4
-        rnd = random.Random(b.seed)
-        offs = rnd.uniform(0.3, 1.0)
-        while True:
-            sy = self._sy(y)
-            if sy > bottom_sy or sy > self.h:
-                break
-            cx = b.x + offs
-            while cx + 1.0 < x1:
-                if cx >= x0:
-                    pygame.draw.rect(surface, FACADE_LINE,
-                                     (int(self._sx(cx)), int(sy), int(1.0 * ppu), int(1.3 * ppu)), 1)
-                cx += col
-            y -= row
-
     def _draw_buildings(self, surface):
         lw = self.lw
+        ppu = self.ppu
         bottom = self.h + 10
+        t = self.world.time
+        shown = []
         for b in self.world.buildings:
-            if not self._visible(b.x, b.w):
+            if b.collapsed or not self._visible(b.x, b.w):
                 continue
             jitter = 0.0
             if b.kind == "crumble" and b.touched_t is not None and b.touched_t > CRUMBLE_DELAY_S * 0.5:
-                jitter = random.uniform(-0.08, 0.08) * self.ppu
+                jitter = random.uniform(-0.08, 0.08) * ppu
+            shown.append((b, jitter))
+
+        # roof clutter first, so every roof line and wall is drawn over it
+        for b, jitter in shown:
+            if b.kind == "girder":
+                continue
+            key = (scenery.style_seed(b), b.w)
+            items = self._clutter.get(key)
+            if items is None:
+                if len(self._clutter) > 256:
+                    self._clutter.clear()
+                items = self._clutter[key] = scenery.clutter_items(b)
+            bx = self._sx(b.x) + jitter
+            ry = self._sy(b.slab_top if b.kind == "window" else b.top)
+            scenery.draw_clutter(surface, items, lambda d: bx + d * ppu, lambda d: ry - d * ppu, ppu, t)
+
+        for b, jitter in shown:
             x0 = int(self._sx(b.x) + jitter)
             x1 = int(self._sx(b.right) + jitter)
             top = int(self._sy(b.top))
             if b.kind == "girder":
-                th = max(4, int(GIRDER_THICKNESS * self.ppu))
+                th = max(4, int(GIRDER_THICKNESS * ppu))
                 pygame.draw.rect(surface, BUILDING_FILL, (x0, top, x1 - x0, th))
-                step = max(8, int(self.ppu * 0.8))
-                for k, xx in enumerate(range(x0, x1 - step, step)):  # truss zig-zag
-                    a, c = (top + th, top) if k % 2 == 0 else (top, top + th)
-                    pygame.draw.line(surface, FACADE_LINE, (xx, a), (xx + step, c), 1)
+                fl = max(1, th // 6)        # flanges
+                pygame.draw.rect(surface, BUILDING_LIGHT, (x0, top, x1 - x0, fl))
+                pygame.draw.rect(surface, BUILDING_SHADE, (x0, top + th - fl, x1 - x0, fl))
+                step = max(8, int(ppu * 0.8))
+                rr = max(1, int(ppu * 0.05))
+                for k, xx in enumerate(range(x0, x1 - step, step)):  # truss zig-zag with rivets
+                    a, c = (top + th - fl, top + fl) if k % 2 == 0 else (top + fl, top + th - fl)
+                    pygame.draw.line(surface, BUILDING_LIGHT, (xx, a), (xx + step, c), max(1, lw - 1))
+                    if k % 2 == 0:
+                        pygame.draw.line(surface, BUILDING_SHADE, (xx, top + fl), (xx, top + th - fl), 1)
+                    if rr > 1:
+                        pygame.draw.circle(surface, BUILDING_LIGHT, (xx, top + fl + rr), rr)
                 pygame.draw.rect(surface, FG, (x0, top, x1 - x0, th), lw)
                 continue
 
-            pygame.draw.rect(surface, BUILDING_FILL, (x0, top, x1 - x0, bottom - top))
-            self._facade(surface, b, b.x, b.right, b.top, bottom)
+            st = self._facades.style(b)
+            pygame.draw.rect(surface, st.base, (x0, top, x1 - x0, bottom - top))
+            if b.kind == "window":
+                self._facades.draw(surface, b, st, ppu, x0, x1, top, bottom, cornice=False)
+            else:
+                self._facades.draw(surface, b, st, ppu, x0, x1, top, bottom)
+            sw = max(2, int(0.35 * ppu))     # the shaded side, light from the left
+            pygame.draw.rect(surface, BUILDING_SHADE, (x1 - sw, top, sw, bottom - top))
+            pygame.draw.line(surface, BUILDING_LIGHT, (x0 + lw, top), (x0 + lw, bottom), 1)
             if b.kind == "crumble":
                 rnd = random.Random(b.seed)
                 for _ in range(3):  # cracks
                     cx = rnd.uniform(0.2, 0.8)
                     pts, yy = [], top
                     xx = x0 + (x1 - x0) * cx
-                    while yy < min(bottom, top + self.ppu * 6):
+                    while yy < min(bottom, top + ppu * 6):
                         pts.append((xx, yy))
-                        xx += rnd.uniform(-0.6, 0.6) * self.ppu
-                        yy += rnd.uniform(0.5, 1.2) * self.ppu
+                        xx += rnd.uniform(-0.6, 0.6) * ppu
+                        yy += rnd.uniform(0.5, 1.2) * ppu
                     if len(pts) > 1:
-                        pygame.draw.lines(surface, FG, False, pts, 1)
+                        pygame.draw.lines(surface, FG, False, pts, max(1, lw - 1))
             pygame.draw.line(surface, FG, (x0, top), (x1, top), lw)
             pygame.draw.line(surface, FG, (x0, top), (x0, bottom), lw)
             pygame.draw.line(surface, FG, (x1, top), (x1, bottom), lw)
 
             if b.kind == "window":
-                ceil, slab = int(self._sy(b.ceil)), int(self._sy(b.slab_top))
-                # interior: lit back wall with support columns, and the wall above the window
-                pygame.draw.rect(surface, INTERIOR, (x0, ceil, x1 - x0, top - ceil))
-                cw = max(3, int(0.5 * self.ppu))
-                cx = b.x + 5.0
-                while cx < b.right - 2:
-                    pygame.draw.rect(surface, BUILDING_FILL, (int(self._sx(cx)), ceil, cw, top - ceil))
-                    cx += 7.0
-                pygame.draw.rect(surface, BUILDING_FILL, (x0, slab, x1 - x0, ceil - slab))
-                self._facade(surface, b, b.x, b.right, b.slab_top, ceil - 4)
-                pygame.draw.rect(surface, FG, (x0, slab, x1 - x0, ceil - slab), lw)
-                for side, broken in ((x0, b.shattered), (x1, b.exit_shattered)):
-                    if broken:
-                        continue
-                    inward = 1 if side == x0 else -1
-                    for k in range(3):
-                        xx = side + inward * k * lw * 2
-                        pygame.draw.line(surface, GLASS, (xx, ceil), (xx, top), 1 if k else lw)
+                self._draw_window_block(surface, b, st, x0, x1, top)
+
+    def _draw_window_block(self, surface, b, st, x0, x1, top):
+        """The open storey you run through, and the block of floors above it."""
+        lw, ppu = self.lw, self.ppu
+        ceil, slab = int(self._sy(b.ceil)), int(self._sy(b.slab_top))
+        pygame.draw.rect(surface, INTERIOR, (x0, ceil, x1 - x0, top - ceil))
+        cw = max(3, int(0.5 * ppu))
+        cx = b.x + 5.0
+        while cx < b.right - 2:
+            px = int(self._sx(cx))
+            # back-wall windows between the columns, then the column with a capital
+            for f in (-3.5, -1.8, 1.8 - 0.5):
+                wx = int(self._sx(cx + f))
+                if x0 < wx < x1 - int(1.2 * ppu):
+                    pygame.draw.rect(surface, WINDOW_DARK, (wx, int(self._sy(b.top + 3.6)), int(1.1 * ppu), int(2.2 * ppu)))
+            pygame.draw.rect(surface, BUILDING_FILL, (px, ceil, cw, top - ceil))
+            pygame.draw.rect(surface, BUILDING_LIGHT, (px - cw // 3, ceil, cw + 2 * (cw // 3), max(2, cw // 2)))
+            cx += 7.0
+        lx = b.x + 2.0                       # ceiling lights
+        while lx < b.right - 1:
+            pygame.draw.rect(surface, WINDOW_LIT, (int(self._sx(lx)), ceil, int(0.9 * ppu), max(2, int(0.12 * ppu))))
+            lx += 3.5
+        pygame.draw.line(surface, BUILDING_SHADE, (x0, ceil + max(2, cw // 2)), (x1, ceil + max(2, cw // 2)), 1)
+        pygame.draw.rect(surface, st.base, (x0, slab, x1 - x0, ceil - slab))
+        self._facades.draw(surface, b, st, ppu, x0, x1, slab, ceil)
+        sw = max(2, int(0.35 * ppu))
+        pygame.draw.rect(surface, BUILDING_SHADE, (x1 - sw, slab, sw, ceil - slab))
+        pygame.draw.rect(surface, FG, (x0, slab, x1 - x0, ceil - slab), lw)
+        for side, broken in ((x0, b.shattered), (x1, b.exit_shattered)):
+            if broken:
+                continue
+            inward = 1 if side == x0 else -1
+            for k in range(3):
+                xx = side + inward * k * lw * 2
+                pygame.draw.line(surface, GLASS, (xx, ceil), (xx, top), 1 if k else lw)
 
     def _draw_props(self, surface):
         ppu = self.ppu
@@ -331,15 +391,12 @@ class RooftopRun(Game):
                 k = max(0.15, 1 - h / 24)
                 sw = ds * (0.6 + 0.8 * k)
                 sh = max(4, int(0.3 * ppu))
-                pygame.draw.ellipse(surface, DIM,
+                pygame.draw.ellipse(surface, ALIEN_DIM,
                                     (int(cx - sw / 2), int(self._sy(db.building.top) - sh / 2), int(sw), sh))
-                ang = db.y * 0.6
+                ang = db.y * 0.35
             else:
-                ang = 0.3
-            pts = [(cx + math.cos(ang + a) * ds * 0.7, cy + math.sin(ang + a) * ds * 0.7)
-                   for a in (0, 1.9, 3.3, 4.6)]
-            pygame.draw.polygon(surface, BUILDING_FILL, pts)
-            pygame.draw.polygon(surface, FG, pts, self.lw)
+                ang = 0.0
+            self._draw_alien(surface, cx, cy, ds * 0.62, ang, db.variant)
         for bd in self.world.birds:
             if not self._visible(bd.x, 1):
                 continue
@@ -360,6 +417,65 @@ class RooftopRun(Game):
         if not p.grounded:
             return "jump" if p.vy > 0 else "fall"
         return sprites.RUN_CYCLE[int(self.stride) % len(sprites.RUN_CYCLE)]
+
+    def _draw_alien(self, surface, cx, cy, r, ang, variant):
+        """Wreckage of some alien machine: a dark silhouette with a bright outline
+        and inner circuitry. Three designs; ang spins it while it falls."""
+        lw = max(1, self.lw)
+        thin = max(1, lw - 1)
+
+        def pt(a, rr):
+            return (cx + math.cos(ang + a) * rr, cy + math.sin(ang + a) * rr)
+
+        def ring(n, rr, off=0.0):
+            return [pt(off + 2 * math.pi * k / n, rr) for k in range(n)]
+
+        pulse = 0.5 + 0.5 * math.sin(self.world.time * 9 + variant)
+        core = tuple(int(c * (0.55 + 0.45 * pulse)) for c in ALIEN)
+        if variant == 0:            # hex core: hexagon, counter-rotated triangle, spokes, nodes
+            hexa = ring(6, r)
+            tri = [pt(-2 * ang + math.pi / 2 + 2 * math.pi * k / 3, r * 0.45) for k in range(3)]
+            pygame.draw.polygon(surface, BG, hexa)
+            pygame.draw.polygon(surface, ALIEN, hexa, lw)
+            pygame.draw.polygon(surface, ALIEN_DIM, ring(6, r * 0.72, math.pi / 6), thin)
+            for k in (0, 2, 4):
+                pygame.draw.line(surface, ALIEN_DIM, hexa[k], tri[k // 2], thin)
+            pygame.draw.polygon(surface, ALIEN, tri, thin)
+            for k in (1, 3, 5):
+                pygame.draw.circle(surface, ALIEN, (int(hexa[k][0]), int(hexa[k][1])), max(2, int(r * 0.12)), thin)
+        elif variant == 1:          # ring drone: segmented ring, four fins, crosshair
+            fins = []
+            for k in range(4):
+                a = math.pi / 4 + k * math.pi / 2
+                fins.append([pt(a - 0.28, r * 0.78), pt(a, r * 1.12), pt(a + 0.28, r * 0.78)])
+            pygame.draw.circle(surface, BG, (int(cx), int(cy)), int(r * 0.82))
+            for f in fins:
+                pygame.draw.polygon(surface, BG, f)
+                pygame.draw.lines(surface, ALIEN, False, f, lw)
+            box = pygame.Rect(0, 0, int(r * 1.6), int(r * 1.6)); box.center = (int(cx), int(cy))
+            for k in range(4):      # ring broken into four arcs
+                a0 = -ang + k * math.pi / 2 + 0.18
+                pygame.draw.arc(surface, ALIEN, box, a0, a0 + math.pi / 2 - 0.36, lw)
+            inner = box.inflate(-int(r * 0.8), -int(r * 0.8))
+            pygame.draw.arc(surface, ALIEN_DIM, inner, -ang, -ang + 4.2, thin)
+            for k in range(4):
+                a = k * math.pi / 2
+                pygame.draw.line(surface, ALIEN_DIM, pt(a, r * 0.25), pt(a, r * 0.55), thin)
+        else:                       # shard relic: long diamond, nested diamond, glyph ticks
+            outer = [pt(0, r * 1.1), pt(math.pi / 2, r * 0.55), pt(math.pi, r * 1.1), pt(-math.pi / 2, r * 0.55)]
+            inner = [pt(0, r * 0.7), pt(math.pi / 2, r * 0.3), pt(math.pi, r * 0.7), pt(-math.pi / 2, r * 0.3)]
+            pygame.draw.polygon(surface, BG, outer)
+            pygame.draw.polygon(surface, ALIEN, outer, lw)
+            pygame.draw.polygon(surface, ALIEN_DIM, inner, thin)
+            for s in (-0.85, -0.55, 0.55, 0.85):
+                a = pt(0, r * s)
+                d = 0.12 * r
+                pygame.draw.line(surface, ALIEN_DIM, (a[0] - math.sin(ang) * d, a[1] + math.cos(ang) * d),
+                                 (a[0] + math.sin(ang) * d, a[1] - math.cos(ang) * d), thin)
+            for s in (-1, 1):
+                q = pt(0, r * 0.95 * s)
+                pygame.draw.circle(surface, ALIEN, (int(q[0]), int(q[1])), max(2, int(r * 0.08)))
+        pygame.draw.circle(surface, core, (int(cx), int(cy)), max(2, int(r * 0.16)))
 
     def _draw_runner(self, surface):
         p = self.world.runner
@@ -397,14 +513,12 @@ class RooftopRun(Game):
             self._center_text(surface, "ROOFTOP RUN", y0 - 50 * k, FG, 72)
             self._center_text(surface, "Shine the laser to jump. Hold it longer to jump higher.",
                               y0 + 20 * k, FG, 30)
-            self._center_text(surface, "Let go before each jump. Crates and debris slow you down.",
+            self._center_text(surface, "Let go before each jump. Crates slow you down; falling wreckage kills.",
                               y0 + 54 * k, DIM, 28)
             self._center_text(surface, "Hold laser (or Space) to start", y0 + 100 * k, FG, 30)
-            frac = min(1.0, self.hold_ms / HOLD_TO_START_MS)
-            bw, bh = int(240 * k), max(8, int(12 * k))
-            bx, by = self.w // 2 - bw // 2, int(y0 + 138 * k)
-            pygame.draw.rect(surface, DIM, (bx, by, bw, bh), 1)
-            pygame.draw.rect(surface, ACCENT, (bx + 1, by + 1, int((bw - 2) * frac), bh - 2))
+            r = 34 * k
+            draw_hold_target(surface, (self.w // 2, y0 + 146 * k + r), r,
+                             self.hold_ms / HOLD_TO_START_MS, width=max(2, int(4 * k)))
         elif self.state == State.Dead:
             self._center_text(surface, f"You ran {int(self.world.distance):,} m,", y0 - 20 * k, FG, 56)
             self._center_text(surface, DEATH_TEXT.get(self.world.death, ""), y0 + 26 * k, FG, 40)

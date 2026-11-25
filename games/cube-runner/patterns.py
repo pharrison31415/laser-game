@@ -2,7 +2,9 @@
 Obstacle pattern library.
 
 Each pattern is a function (rng, difficulty) -> list of parts, registered with
-the minimum difficulty (0..1) at which it can appear. Patterns randomize their
+the minimum difficulty (0..1) at which it can appear. A pattern whose geometry
+depends on the scroll speed can also take a keyword v (U/s); every registered
+pattern accepts v=, and it is passed on only to those that declare it. Patterns randomize their
 own sizes so the same pattern plays differently each time.
 
 Parts (all positions in units relative to the pattern start, y is up, 0 = ground):
@@ -15,6 +17,11 @@ Parts (all positions in units relative to the pattern start, y is up, 0 = ground
     ("pad",   dx, base)              jump pad: launches you high on contact
     ("orb",   dx, y)                 mid-air orb: laser while touching = extra jump
 """
+import inspect
+import math
+
+from .const import GRAVITY, JUMP_VELOCITY, SPEED_START
+
 
 PATTERNS = []  # list of (min_difficulty, name, fn)
 PILLAR = -6.0   # bottom for pillars standing in pits
@@ -27,8 +34,13 @@ def step_w(r, d, base=5):
 
 def pattern(min_d):
     def deco(fn):
-        PATTERNS.append((min_d, fn.__name__, fn))
-        return fn
+        wants_v = "v" in inspect.signature(fn).parameters
+
+        def call(r, d, v=None):
+            return fn(r, d, v=v) if wants_v else fn(r, d)
+        call.__name__ = fn.__name__
+        PATTERNS.append((min_d, fn.__name__, call))
+        return call
     return deco
 
 
@@ -129,9 +141,13 @@ def tunnel_then_spike(r, d):
 
 
 @pattern(0.75)
-def tunnel_spike_tunnel(r, d):
+def tunnel_spike_tunnel(r, d, v=None):
+    # jump the spike between the tunnels and land before the second one: its
+    # distance grows with the jump length at speed (9 at the starting speed)
     w = r.randint(3, 4)
-    return [ceiling(0, w), S(w + 2), ceiling(w + 9, w)]
+    jump_len = (v or SPEED_START) * 2 * JUMP_VELOCITY / GRAVITY
+    gap = max(9, 4 + math.ceil(jump_len))
+    return [ceiling(0, w), S(w + 2), ceiling(w + gap, w)]
 
 
 # --- pads --------------------------------------------------------------------
@@ -142,9 +158,13 @@ def pad_onto_wall(r, d):
 
 
 @pattern(0.22)
-def pad_to_floating_ledge(r, d):
+def pad_to_floating_ledge(r, d, v=None):
+    # the pad's arc flattens out with speed: at high speed the ledge must start
+    # further away, or you hit its front face while still rising
+    v = v or SPEED_START
+    x = max(4, round(v * 0.4))
     w = r.randint(4, 6)
-    return [J(0), B(4, w, 4.5, 3.5)] + spikes(5, w - 1)
+    return [J(0), B(x, w, 4.5, 3.5)] + spikes(x + 1, w - 1)
 
 
 @pattern(0.70)

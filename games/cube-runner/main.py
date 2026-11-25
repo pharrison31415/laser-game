@@ -8,6 +8,7 @@ import pygame
 
 from engine.api import Game, FrameData
 from engine.app.context import Context
+from engine.render.shapes import draw_hold_target
 
 from .const import *
 from .world import World
@@ -279,12 +280,9 @@ class CubeRunner(Game):
             self._center_text(surface, "Never jump into a hatched ceiling!",
                               y0 + 80 * k, DIM, 28)
             self._center_text(surface, "Hold laser (or Space) to start", y0 + 124 * k, FG, 30)
-            frac = min(1.0, self.hold_ms / HOLD_TO_START_MS)
-            bw, bh = int(240 * k), max(8, int(12 * k))
-            bx = self.w // 2 - bw // 2
-            by = int(y0 + 162 * k)
-            pygame.draw.rect(surface, DIM, (bx, by, bw, bh), 1)
-            pygame.draw.rect(surface, ACCENT, (bx + 1, by + 1, int((bw - 2) * frac), bh - 2))
+            r = 34 * k
+            draw_hold_target(surface, (self.w // 2, y0 + 170 * k + r), r,
+                             self.hold_ms / HOLD_TO_START_MS, width=max(2, int(4 * k)))
         elif self.state == State.Dead:
             self._center_text(surface, "CRASHED!", y0 - 30 * k, FG, 64)
             if self.dead_ms >= DEATH_RESTART_DELAY_MS:

@@ -11,8 +11,8 @@ PAD_VELOCITY = 25.0               # jump pads: apex ~5 U
 ORB_VELOCITY = 17.0               # mid-air orbs
 MAX_FALL_SPEED = 30.0             # U / s
 SPEED_START = 8.5                 # U / s horizontal scroll speed
-SPEED_MAX = 12.5
-SPEED_RAMP_PER_UNIT = 0.004       # speed gained per U travelled
+SPEED_MAX = 15.0
+SPEED_RAMP_PER_UNIT = 0.006       # speed gained per U travelled
 SPIN_DEG_PER_SEC = 400            # cube rotation while airborne
 CEILING_THICKNESS = 2.0           # hatched overhead slabs
 PIT_DEATH_DEPTH = 1.0             # falling this far below ground = dead
@@ -24,14 +24,14 @@ ORB_REACH = 1.1                   # player-center to orb-center distance to use 
 
 # Level generation
 FIRST_OBSTACLE_AT = 18.0          # U ahead of player at start
-DIFFICULTY_FULL_AT = 500.0        # distance at which difficulty reaches 1.0
+DIFFICULTY_FULL_AT = 350.0        # distance at which difficulty reaches 1.0
 GAP_MIN = 5.5
 GAP_LANDING_ROOM = 1.5            # extra runway beyond one full jump (see World.min_gap_at)
 SPAWN_AHEAD = 40.0                # generate this many U past the screen edge
 NO_REPEAT_WINDOW = 3              # don't reuse any of the last N sections
 NEW_PATTERN_WEIGHT = 3.0          # recently unlocked sections are this much likelier...
 NEW_PATTERN_WEIGHT_FROM = 0.3      # ...but only once difficulty reaches this
-SECTION_BREATHER = 4.0            # extra empty runway between sections
+SECTION_BREATHER = 2.0            # extra empty runway between sections
 
 # Flow
 DEATH_RESTART_DELAY_MS = 900      # ignore input briefly after crashing

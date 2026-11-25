@@ -17,6 +17,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import pygame
 
 from engine.api.frame_data import Point
+from engine.render.shapes import HOLD_TARGET_COLOR, draw_hamburger, draw_hold_target
 
 FG = (230, 230, 230)
 DIM = (150, 150, 150)
@@ -63,15 +64,6 @@ class Fonts:
         if px not in self._cache:
             self._cache[px] = pygame.font.Font(None, px)
         return self._cache[px]
-
-
-def _ring(surface, center, radius, progress, width):
-    if progress <= 0:
-        return
-    rect = pygame.Rect(0, 0, radius * 2, radius * 2)
-    rect.center = center
-    start = math.pi / 2
-    pygame.draw.arc(surface, FILL, rect, start - progress * 2 * math.pi, start, width)
 
 
 def _wrap(font, text, width) -> List[str]:
@@ -134,17 +126,14 @@ class PauseButton:
                 for c, pts in points_by_color.items()}
 
     def draw(self, surface):
+        """Menu (hamburger) icon in the platform's hold-target style."""
         b = self.button
-        r = b.rect
-        color = FG if b.hovered else DIM
-        pygame.draw.circle(surface, BG, r.center, r.width // 2)
-        pygame.draw.circle(surface, color, r.center, r.width // 2, max(2, r.width // 22))
-        bar_w, bar_h = max(3, r.width // 8), r.height * 0.38
-        for dx in (-r.width * 0.12, r.width * 0.12):
-            pygame.draw.rect(surface, color, (r.centerx + dx - bar_w / 2,
-                                              r.centery - bar_h / 2, bar_w, bar_h))
-        _ring(surface, r.center, r.width // 2 + max(4, r.width // 10), b.progress,
-              max(3, r.width // 12))
+        r = b.rect.width / 2
+        width = max(2, int(r / 9))
+        pygame.draw.circle(surface, BG, b.rect.center, int(r))
+        draw_hold_target(surface, b.rect.center, r, b.progress, width=width,
+                         ring_width=max(2, width - 1), ring_gap=max(5, r * 0.25))
+        draw_hamburger(surface, b.rect.center, r * 0.95, HOLD_TARGET_COLOR, width)
 
 
 # -- menus -------------------------------------------------------------------------
