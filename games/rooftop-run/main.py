@@ -350,6 +350,11 @@ class RooftopRun(Game):
 
     def _runner_pose(self) -> str:
         p = self.world.runner
+        if p.stumble > 0 and p.rolling and p.grounded:
+            # landing roll: its stills spread over the stumble time
+            done = 1.0 - p.stumble / STUMBLE_S
+            roll = sprites.ROLL_CYCLE
+            return roll[min(len(roll) - 1, int(done * len(roll)))]
         if p.stumble > 0:
             return "stumble"
         if not p.grounded:

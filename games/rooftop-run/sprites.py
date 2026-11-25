@@ -22,36 +22,48 @@ FAR_B = (13, 66, 43)
 
 # (pose name) -> joints. hip/neck/head are shared; "n_" = near side, "f_" = far side.
 POSES: Dict[str, Dict[str, Vec]] = {
-    # stride contact: near leg reaching forward, far leg pushing off behind
-    "run_a": dict(hip=(0.0, 0.78), neck=(0.20, 1.23), head=(0.29, 1.40),
-                  n_knee=(0.24, 0.46), n_foot=(0.36, 0.05),
-                  f_knee=(-0.13, 0.44), f_foot=(-0.40, 0.20),
-                  n_elbow=(-0.13, 1.02), n_hand=(-0.03, 0.84),
-                  f_elbow=(0.30, 1.04), f_hand=(0.40, 1.22)),
-    # passing: near knee driving up, far leg under the body
-    "run_b": dict(hip=(0.0, 0.83), neck=(0.21, 1.28), head=(0.30, 1.45),
-                  n_knee=(0.32, 0.64), n_foot=(0.12, 0.33),
-                  f_knee=(0.05, 0.44), f_foot=(-0.02, 0.03),
-                  n_elbow=(-0.02, 1.01), n_hand=(0.13, 0.93),
-                  f_elbow=(0.10, 1.02), f_hand=(0.24, 1.08)),
-    # rising: knees tucked, one arm thrown forward
-    "jump": dict(hip=(0.0, 0.86), neck=(0.15, 1.31), head=(0.23, 1.49),
-                 n_knee=(0.34, 0.78), n_foot=(0.20, 0.44),
-                 f_knee=(0.06, 0.54), f_foot=(-0.26, 0.50),
-                 n_elbow=(0.33, 1.20), n_hand=(0.46, 1.40),
-                 f_elbow=(-0.15, 1.14), f_hand=(-0.32, 1.30)),
-    # falling: legs reaching for the next roof, arms up for balance
-    "fall": dict(hip=(0.0, 0.80), neck=(0.10, 1.27), head=(0.17, 1.45),
-                 n_knee=(0.26, 0.48), n_foot=(0.40, 0.14),
-                 f_knee=(0.08, 0.42), f_foot=(0.02, 0.06),
-                 n_elbow=(0.22, 1.36), n_hand=(0.28, 1.56),
-                 f_elbow=(-0.12, 1.35), f_hand=(-0.22, 1.52)),
-    # stumble: pitched forward, arms flung out
-    "stumble": dict(hip=(0.0, 0.72), neck=(0.38, 1.08), head=(0.51, 1.21),
-                    n_knee=(0.20, 0.40), n_foot=(0.10, 0.03),
-                    f_knee=(-0.16, 0.38), f_foot=(-0.36, 0.12),
-                    n_elbow=(0.50, 0.92), n_hand=(0.64, 0.78),
-                    f_elbow=(0.22, 1.16), f_hand=(0.32, 1.36)),
+    # support: far foot planted under the hip; near heel whipped up under the
+    # glutes as its knee swings through; arms passing with elbows bent
+    "run_a": dict(hip=(0.0, 0.77), neck=(0.29, 1.17), head=(0.41, 1.32),
+                  f_knee=(0.10, 0.40), f_foot=(0.00, 0.03),
+                  n_knee=(0.16, 0.42), n_foot=(-0.22, 0.58),
+                  n_elbow=(-0.14, 1.04), n_hand=(-0.20, 0.82),
+                  f_elbow=(0.42, 0.96), f_hand=(0.58, 1.14)),
+    # drive: near leg fully extended behind, toe pushing off; far knee punched
+    # up to hip height; near arm back, far arm thrown forward
+    "run_b": dict(hip=(0.0, 0.78), neck=(0.30, 1.19), head=(0.42, 1.34),
+                  n_knee=(-0.20, 0.42), n_foot=(-0.43, 0.04),
+                  f_knee=(0.38, 0.68), f_foot=(0.26, 0.28),
+                  n_elbow=(-0.06, 1.06), n_hand=(-0.18, 0.86),
+                  f_elbow=(0.46, 0.98), f_hand=(0.60, 1.20)),
+    # flight: both feet off the roof, legs scissored wide: far shin reaching
+    # for the next step, near leg trailing with the heel kicked high
+    "run_c": dict(hip=(0.0, 0.86), neck=(0.29, 1.27), head=(0.41, 1.42),
+                  f_knee=(0.32, 0.58), f_foot=(0.42, 0.16),
+                  n_knee=(-0.22, 0.52), n_foot=(-0.50, 0.78),
+                  n_elbow=(-0.04, 1.12), n_hand=(-0.20, 0.94),
+                  f_elbow=(0.44, 1.06), f_hand=(0.60, 1.24)),
+    # rising: a long explosive leap, lead knee high, trail leg stretched back,
+    # one arm punched up at the far roof, the other swung back
+    "jump": dict(hip=(0.0, 0.90), neck=(0.24, 1.35), head=(0.35, 1.51),
+                 n_knee=(0.40, 0.84), n_foot=(0.36, 0.44),
+                 f_knee=(-0.24, 0.62), f_foot=(-0.54, 0.36),
+                 n_elbow=(0.42, 1.40), n_hand=(0.62, 1.58),
+                 f_elbow=(-0.04, 1.16), f_hand=(-0.28, 1.20)),
+    # falling: bracing to land: legs reaching ahead for the roof, torso
+    # sitting back, arms thrown wide and high for balance
+    "fall": dict(hip=(0.0, 0.82), neck=(0.05, 1.30), head=(0.10, 1.48),
+                 n_knee=(0.32, 0.56), n_foot=(0.50, 0.20),
+                 f_knee=(0.18, 0.44), f_foot=(0.24, 0.06),
+                 n_elbow=(0.32, 1.42), n_hand=(0.52, 1.58),
+                 f_elbow=(-0.20, 1.38), f_hand=(-0.38, 1.56)),
+    # stumble: pitched hard forward, one foot scrambling underneath, the other
+    # leg kicked up behind, one arm grabbing at the roof, one wheeling back
+    "stumble": dict(hip=(0.0, 0.70), neck=(0.42, 1.00), head=(0.58, 1.08),
+                    n_knee=(0.24, 0.36), n_foot=(0.22, 0.02),
+                    f_knee=(-0.24, 0.56), f_foot=(-0.54, 0.74),
+                    n_elbow=(0.58, 0.82), n_hand=(0.74, 0.66),
+                    f_elbow=(0.20, 1.20), f_hand=(0.02, 1.38)),
 }
 
 
@@ -63,9 +75,10 @@ def _swap_sides(j: Dict[str, Vec]) -> Dict[str, Vec]:
 
 
 # the other half of the stride: same shapes with the legs and arms swapped
-POSES["run_c"] = _swap_sides(POSES["run_a"])
-POSES["run_d"] = _swap_sides(POSES["run_b"])
-RUN_CYCLE = ["run_a", "run_b", "run_c", "run_d"]
+POSES["run_d"] = _swap_sides(POSES["run_a"])
+POSES["run_e"] = _swap_sides(POSES["run_b"])
+POSES["run_f"] = _swap_sides(POSES["run_c"])
+RUN_CYCLE = ["run_a", "run_b", "run_c", "run_d", "run_e", "run_f"]
 
 
 # -- building facets ---------------------------------------------------------------
@@ -156,6 +169,41 @@ def build_pose(j: Dict[str, Vec]) -> List[tuple]:
             + _torso(j) + _head(j)
             + _leg(j, "n_", MID, SHADE) + _arm(j, "n_", LIGHT, MID))
 
+
+# -- landing roll ------------------------------------------------------------------
+# A forward shoulder roll after a hard landing: absorb, two tumbling stills of
+# the same tucked ball turned forward about its middle, then up into the sprint.
+POSES["roll_1"] = dict(   # impact: deep crouch, torso diving, arms reaching for the roof
+    hip=(-0.08, 0.40), neck=(0.32, 0.70), head=(0.47, 0.66),
+    n_knee=(0.30, 0.46), n_foot=(0.16, 0.05),
+    f_knee=(0.12, 0.12), f_foot=(-0.28, 0.07),
+    n_elbow=(0.50, 0.46), n_hand=(0.66, 0.28),
+    f_elbow=(0.48, 0.52), f_hand=(0.68, 0.38))
+POSES["roll_4"] = dict(   # up out of the roll: back foot planted and driving, low lean
+    hip=(0.0, 0.66), neck=(0.34, 1.02), head=(0.48, 1.12),
+    n_knee=(-0.04, 0.30), n_foot=(-0.30, 0.05),
+    f_knee=(0.36, 0.64), f_foot=(0.20, 0.30),
+    n_elbow=(0.50, 0.86), n_hand=(0.62, 1.06),
+    f_elbow=(0.06, 0.88), f_hand=(-0.06, 0.68))
+_TUCK = dict(             # tucked ball about (0, 0): back rounded, chin down, shins out, one arm out
+    hip=(-0.14, -0.14), neck=(0.06, 0.24), head=(0.26, 0.26),
+    n_knee=(0.30, -0.14), n_foot=(0.10, -0.46),
+    f_knee=(0.24, -0.06), f_foot=(0.00, -0.34),
+    n_elbow=(0.16, 0.02), n_hand=(0.36, -0.12),
+    f_elbow=(-0.12, 0.08), f_hand=(-0.28, -0.08))
+
+
+def _rolled(j: Dict[str, Vec], deg: float, x: float) -> Dict[str, Vec]:
+    """j turned by deg (negative = forward) about (0, 0), set down on the roof at x."""
+    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    out = {k: (vx * c - vy * s + x, vx * s + vy * c) for k, (vx, vy) in j.items()}
+    low = min(p[1] for pts, _ in build_pose(out) for p in pts)
+    return {k: (vx, vy - low) for k, (vx, vy) in out.items()}
+
+
+POSES["roll_2"] = _rolled(_TUCK, -140, 0.10)
+POSES["roll_3"] = _rolled(_TUCK, -235, 0.10)
+ROLL_CYCLE = ["roll_1", "roll_2", "roll_3", "roll_4"]
 
 FACETS = {name: build_pose(j) for name, j in POSES.items()}
 

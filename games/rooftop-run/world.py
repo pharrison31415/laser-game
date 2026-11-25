@@ -4,6 +4,7 @@ Rooftop Run world simulation (pure Python, no pygame).
 Units: 1 U ~ 1 m, y is up. The runner's feet are at (x .. x + RUNNER_W, y).
 """
 import math
+import os
 import random
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -75,6 +76,7 @@ class Runner:
     jump_t: float = 99.0           # time since the current jump started
     holding_jump: bool = False     # still holding the button that started this jump
     stumble: float = 0.0           # seconds of stumble left
+    rolling: bool = False          # the stumble is a landing roll (after a hard landing)
 
 
 def air_time(dy: float) -> Optional[float]:
@@ -143,6 +145,9 @@ class World:
         return max(SPEED_FLOOR, v)
 
     def _pick_kind(self, x: float, prev: Building) -> str:
+        # TEMPORARY playtest switch: ROOFTOP_CRUMBLE_TEST=1 -> roof, crumble, roof, crumble, ...
+        if os.environ.get("ROOFTOP_CRUMBLE_TEST"):
+            return "crumble" if prev.kind == "roof" else "roof"
         options, weights = ["roof"], [5.0]
         if prev.kind == "roof":
             if self._unlocked("window", x):
@@ -178,6 +183,9 @@ class World:
             takeoff = prev.top - (CRUMBLE_DROP_BUDGET if prev.kind == "crumble" else 0.0)
             lo_top = max(TOP_MIN, takeoff - STEP_DOWN_MAX)
             hi_top = min(TOP_MAX, takeoff + STEP_UP_MAX * (0.5 + 0.5 * d))
+            if kind == "crumble":
+                # high enough that even after sinking the full budget, the lowest next roof is a normal step up
+                lo_top = min(max(lo_top, TOP_MIN + CRUMBLE_DROP_BUDGET - STEP_UP_MAX), hi_top)
             top = r.uniform(lo_top, hi_top) if hi_top > lo_top else lo_top
             t = air_time(top - takeoff)
             reach = v * t if t else 0.0
@@ -187,7 +195,7 @@ class World:
             if kind == "girder":
                 w = max(4.0, v * r.uniform(0.6, 1.2))
             elif kind == "crumble":
-                w = max(6.0, v * r.uniform(0.9, 1.35))
+                w = max(6.0, v * r.uniform(0.8, CRUMBLE_W_MAX))
             else:
                 w = max(12.0, v * r.uniform(1.6, 4.0))
             b = Building(x + gap, w, top, kind, seed=seed)
@@ -302,6 +310,7 @@ class World:
                 if p.vy < HARD_LANDING_VY:
                     self.speed = max(SPEED_FLOOR, self.speed * HARD_LANDING_SLOWDOWN)
                     p.stumble = STUMBLE_S
+                    p.rolling = True
                     self.events.append(("hard_landing", p.x, best.top))
                 else:
                     self.events.append(("land", p.x, best.top))
@@ -367,6 +376,7 @@ class World:
                 db.hit = True
                 self.speed = max(SPEED_FLOOR, self.speed * DEBRIS_SLOWDOWN)
                 p.stumble = STUMBLE_S
+                p.rolling = False
                 self.events.append(("debris_hit", db.x, db.y))
 
     def _overlaps(self, x, y, w, h) -> bool:

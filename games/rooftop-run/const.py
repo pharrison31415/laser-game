@@ -37,9 +37,12 @@ HARD_LANDING_VY = -24.0          # landing faster than this makes you stumble...
 HARD_LANDING_SLOWDOWN = 0.9      # ...and lose some speed
 STUMBLE_S = 0.35
 WINDOW_CEILING = 5.0             # window buildings: ceiling height above the floor inside
-CRUMBLE_DELAY_S = 0.25           # crumbling buildings start sinking this long after you land
-CRUMBLE_ACCEL = 3.0              # U/s^2 sink acceleration
-CRUMBLE_DROP_BUDGET = 3.0        # generator assumes the roof may have sunk this far when you leave
+CRUMBLE_DELAY_S = 0.12           # crumbling buildings start sinking this long after you land
+CRUMBLE_ACCEL = 9.0              # U/s^2 sink acceleration
+CRUMBLE_W_MAX = 1.15             # crumbling roofs are at most this many seconds of running long
+# how far the roof can have sunk when you leave it (running its whole length, plus
+# a little slack); the generator places the next building for a takeoff that low
+CRUMBLE_DROP_BUDGET = 0.5 * CRUMBLE_ACCEL * (CRUMBLE_W_MAX + 0.1 - CRUMBLE_DELAY_S) ** 2
 GIRDER_THICKNESS = 0.6
 FALL_DEATH_Y = -6.0
 
@@ -66,9 +69,9 @@ HOLD_TO_START_MS = 400
 
 # Colours: grays + one accent so nothing competes with the red laser dot
 # runner flip book: run-cycle stills per second = BASE + PER_SPEED * speed, capped
-RUN_FPS_BASE = 3.0
-RUN_FPS_PER_SPEED = 0.55
-RUN_FPS_MAX = 13.0
+RUN_FPS_BASE = 4.5
+RUN_FPS_PER_SPEED = 0.8
+RUN_FPS_MAX = 19.0
 
 FG = (230, 230, 230)
 DIM = (150, 150, 150)
