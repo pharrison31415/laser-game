@@ -1,0 +1,17 @@
+id: rooftop-run
+title: Rooftop Run
+version: 0.1.0
+authors: [ "You" ]
+colors: [ "red" ]
+max_points_per_color:
+  red: 3
+description: "One-button endless rooftop runner. You never stop running and keep getting faster; jump the gaps between buildings."
+instructions: |
+  Shine the red laser anywhere to jump: hold it longer to jump higher and further.
+  Let go and shine again for the next jump. Crates and debris slow you down; falling
+  into a gap or running into a wall ends the run. Space/Up also jumps. Press C to (re)calibrate.
+debug_click:
+  enabled: true
+  buttons:
+    left: red
+  intensity: 9999
