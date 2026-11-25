@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from .const import *
-from .patterns import PATTERNS
+from . import sections as sec
 
 EPS = 1e-4
 TOUCH = 1e-3
@@ -67,19 +67,14 @@ class Player:
     angle: float = 0.0  # degrees, visual only
 
 
-def pattern_extent(parts) -> float:
-    end = 0.0
-    for p in parts:
-        kind, dx = p[0], p[1]
-        width = p[2] if kind in ("block", "pit", "ceiling") else 1.0
-        end = max(end, dx + width)
-    return end
+pattern_extent = sec.parts_extent
 
 
 class World:
-    def __init__(self, seed: Optional[int] = None, patterns=None):
+    def __init__(self, seed: Optional[int] = None, sections=None):
+        """sections=None: the full library; sections=[]: an empty world (tests)."""
         self.rng = random.Random(seed)
-        self.patterns = PATTERNS if patterns is None else patterns
+        self.sections = sec.all_sections() if sections is None else sections
         self.player = Player()
         self.speed = SPEED_START
         self.blocks: List[Block] = []
@@ -89,7 +84,7 @@ class World:
         self.orbs: List[Orb] = []
         self.gen_x = FIRST_OBSTACLE_AT
         self.dead = False
-        self.recent: List[int] = []
+        self.recent: List[str] = []
         self._generate()
 
     # -- difficulty / generation ----------------------------------------------
@@ -100,33 +95,22 @@ class World:
     def difficulty(self) -> float:
         return min(1.0, self.player.x / DIFFICULTY_FULL_AT)
 
-    @staticmethod
-    def speed_at(x: float) -> float:
-        return min(SPEED_MAX, SPEED_START + x * SPEED_RAMP_PER_UNIT)
+    speed_at = staticmethod(sec.speed_at)
+    min_gap_at = staticmethod(sec.min_gap_at)
 
-    @staticmethod
-    def min_gap_at(x: float) -> float:
-        """Shortest runway allowed between patterns at world x: one full jump at the
-        speed you'll have there, plus landing room, so a jump over the end of one
-        pattern never lands you against the start of the next."""
-        jump_len = World.speed_at(x) * 2 * JUMP_VELOCITY / GRAVITY
-        return max(GAP_MIN, jump_len + GAP_LANDING_ROOM)
-
-    def _gap(self) -> float:
-        return max(self.min_gap_at(self.gen_x),
-                   GAP_START - self.player.x * GAP_SHRINK_PER_UNIT)
-
-    def _pick_pattern(self) -> int:
+    def _pick_section(self) -> "sec.Section":
         d = self.difficulty()
-        avail = [i for i, (mind, _, _) in enumerate(self.patterns) if mind <= d]
-        fresh = [i for i in avail if i not in self.recent]
+        if not self.recent:
+            intro = [s for s in self.sections if s.name == sec.INTRO]
+            if intro:
+                return intro[0]
+        avail = [s for s in self.sections if s.is_available(d)] or \
+            [min(self.sections, key=lambda s: s.min_d)]
+        fresh = [s for s in avail if s.name not in self.recent]
         pool = fresh or avail
         boost = d >= NEW_PATTERN_WEIGHT_FROM
-        weights = [NEW_PATTERN_WEIGHT if boost and self.patterns[i][0] >= d - 0.3 else 1.0
-                   for i in pool]
-        idx = self.rng.choices(pool, weights)[0]
-        self.recent = (self.recent + [idx])[-NO_REPEAT_WINDOW:]
-        return idx
+        weights = [NEW_PATTERN_WEIGHT if boost and s.min_d >= d - 0.3 else 1.0 for s in pool]
+        return self.rng.choices(pool, weights)[0]
 
     def add_parts(self, x0: float, parts) -> float:
         """Place a pattern's parts at world x0; returns the pattern's length."""
@@ -139,7 +123,8 @@ class World:
             elif kind == "block":
                 self.blocks.append(Block(dx, p[2], p[3], p[4]))
             elif kind == "ceiling":
-                self.blocks.append(Block(dx, p[2], p[3] + CEILING_THICKNESS, p[3], ceiling=True))
+                top = p[4] if len(p) > 4 else p[3] + CEILING_THICKNESS
+                self.blocks.append(Block(dx, p[2], top, p[3], ceiling=True))
             elif kind == "pit":
                 self.pits.append(Pit(dx, p[2]))
             elif kind == "pad":
@@ -152,10 +137,13 @@ class World:
 
     def _generate(self):
         horizon = self.player.x + SPAWN_AHEAD
-        while self.patterns and self.gen_x < horizon:
-            _, _, fn = self.patterns[self._pick_pattern()]
-            length = self.add_parts(self.gen_x, fn(self.rng, self.difficulty()))
-            self.gen_x += length + self._gap() * self.rng.uniform(1.0, 1.4)
+        while self.sections and self.gen_x < horizon:
+            section = self._pick_section()
+            self.recent = (self.recent + [section.name])[-NO_REPEAT_WINDOW:]
+            parts = section.build(self.rng, self.difficulty(), self.gen_x)
+            length = self.add_parts(self.gen_x, parts)
+            # a breather between sections
+            self.gen_x += length + self.min_gap_at(self.gen_x) + SECTION_BREATHER
 
         cutoff = self.player.x - 30
         self.blocks = [o for o in self.blocks if o.x + o.w > cutoff]

@@ -264,7 +264,7 @@ class CubeRunner(Game):
 
         frac = (self.world.speed - SPEED_START) / (SPEED_MAX - SPEED_START)
         bar_w, bar_h = int(self.w * 0.25), max(8, int(12 * k))
-        bx, by = self.w - bar_w - m, int(26 * k)
+        bx, by = self.w - bar_w - m - int(self.h * 0.1), int(26 * k)   # left of the engine's pause button
         pygame.draw.rect(surface, DIM, (bx, by, bar_w, bar_h), 1)
         pygame.draw.rect(surface, DIM, (bx + 1, by + 1, int((bar_w - 2) * frac), bar_h - 2))
         self._text(surface, "speed", (bx, by + bar_h + int(4 * k)), DIM, 24)
@@ -294,7 +294,7 @@ class CubeRunner(Game):
                     msg = "Shine the laser (or Space) to retry"
                 self._center_text(surface, msg, y0 + 30 * k, FG, 30)
 
-        self._text(surface, "Laser/Space: jump  •  C: calibrate  •  Esc: quit",
+        self._text(surface, "Laser/Space: jump  •  C: calibrate  •  Esc: pause",
                    (int(20 * k), self.h - int(36 * k)), DIM, 24)
 
     # -- events --------------------------------------------------------------

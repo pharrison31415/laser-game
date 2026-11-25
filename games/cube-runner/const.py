@@ -25,14 +25,13 @@ ORB_REACH = 1.1                   # player-center to orb-center distance to use 
 # Level generation
 FIRST_OBSTACLE_AT = 18.0          # U ahead of player at start
 DIFFICULTY_FULL_AT = 500.0        # distance at which difficulty reaches 1.0
-GAP_START = 9.0                   # U of empty runway between patterns
 GAP_MIN = 5.5
 GAP_LANDING_ROOM = 1.5            # extra runway beyond one full jump (see World.min_gap_at)
-GAP_SHRINK_PER_UNIT = 0.006
 SPAWN_AHEAD = 40.0                # generate this many U past the screen edge
-NO_REPEAT_WINDOW = 3              # don't reuse any of the last N patterns
-NEW_PATTERN_WEIGHT = 3.0          # recently unlocked patterns are this much likelier...
+NO_REPEAT_WINDOW = 3              # don't reuse any of the last N sections
+NEW_PATTERN_WEIGHT = 3.0          # recently unlocked sections are this much likelier...
 NEW_PATTERN_WEIGHT_FROM = 0.3      # ...but only once difficulty reaches this
+SECTION_BREATHER = 4.0            # extra empty runway between sections
 
 # Flow
 DEATH_RESTART_DELAY_MS = 900      # ignore input briefly after crashing
