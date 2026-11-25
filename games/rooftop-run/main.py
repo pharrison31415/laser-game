@@ -148,11 +148,11 @@ class RooftopRun(Game):
                 self._reset()
                 self.need_release = True
 
-    def _burst(self, x, y, n, color, speed, size, up=0.0, gravity=30.0):
+    def _burst(self, x, y, n, color, speed, size, up=0.0, gravity=30.0, carry=0.3):
         for _ in range(n):
             a = random.uniform(0, 2 * math.pi)
             s = random.uniform(0.3, 1.0) * speed
-            self.particles.append(Particle(x, y, math.cos(a) * s + self.world.speed * 0.3,
+            self.particles.append(Particle(x, y, math.cos(a) * s + self.world.speed * carry,
                                            math.sin(a) * s + up, random.uniform(0.4, 1.0),
                                            color, random.uniform(0.5, 1.0) * size, gravity))
 
@@ -161,6 +161,10 @@ class RooftopRun(Game):
             if kind == "glass":
                 self._burst(x, y + 2.5, 26, GLASS, 8, 0.25, up=2)
                 self.shake = max(self.shake, 0.25)
+            elif kind == "glass_exit":
+                # shards spray out ahead of the runner and rain down outside
+                self._burst(x, y + 2.5, 34, GLASS, 7, 0.25, up=3, carry=0.85)
+                self.shake = max(self.shake, 0.3)
             elif kind == "crate":
                 self._burst(x + CRATE_SIZE / 2, y + CRATE_SIZE / 2, 14, DIM, 7, 0.3, up=4)
                 self.shake = max(self.shake, 0.2)
@@ -297,9 +301,12 @@ class RooftopRun(Game):
                 pygame.draw.rect(surface, BUILDING_FILL, (x0, slab, x1 - x0, ceil - slab))
                 self._facade(surface, b, b.x, b.right, b.slab_top, ceil - 4)
                 pygame.draw.rect(surface, FG, (x0, slab, x1 - x0, ceil - slab), lw)
-                if not b.shattered:
+                for side, broken in ((x0, b.shattered), (x1, b.exit_shattered)):
+                    if broken:
+                        continue
+                    inward = 1 if side == x0 else -1
                     for k in range(3):
-                        xx = x0 + k * lw * 2
+                        xx = side + inward * k * lw * 2
                         pygame.draw.line(surface, GLASS, (xx, ceil), (xx, top), 1 if k else lw)
 
     def _draw_props(self, surface):

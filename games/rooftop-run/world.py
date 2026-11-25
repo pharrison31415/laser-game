@@ -26,6 +26,7 @@ class Building:
     touched_t: Optional[float] = None   # crumble: time since first landed on
     sink_v: float = 0.0
     shattered: bool = False        # window: glass broken
+    exit_shattered: bool = False   # window: the pane on the far side, smashed on the way out
     seed: int = 0                  # for facade decoration
 
     @property
@@ -333,6 +334,11 @@ class World:
                 if not b.shattered and p.y < b.ceil and p.y + RUNNER_H > b.top:
                     b.shattered = True
                     self.events.append(("glass", b.x, b.top))
+                # crash out through the far pane (just looks and sounds the part: no slowdown)
+                if (not b.exit_shattered and p.x + RUNNER_W >= b.right - 0.05
+                        and p.y < b.ceil and p.y + RUNNER_H > b.top - 0.5):
+                    b.exit_shattered = True
+                    self.events.append(("glass_exit", b.right, b.top))
             if p.y < b.top - EPS and p.y + RUNNER_H > b.bottom + EPS:
                 return self._die("wall")
 
