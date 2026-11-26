@@ -26,8 +26,11 @@ class Session:
     """The current game (if any) and which screen is showing: the game itself,
     its pause menu, or the game-select menu."""
 
-    def __init__(self, ctx: Context, cfg: EngineConfig, games: list[dict]):
+    def __init__(self, ctx: Context, cfg: EngineConfig, games: list[dict],
+                 can_calibrate: bool = True):
         self.ctx, self.cfg, self.games = ctx, cfg, games
+        self.can_calibrate = can_calibrate
+        self.calibrate_requested = False             # the run loop does the calibration
         self.fonts = ui.Fonts(ctx.screen_size[1])
         self.pause_button = ui.PauseButton(ctx.screen_size)
         self.menu_injector = DebugPointInjector(cfg, MENU_DEBUG)
@@ -71,7 +74,8 @@ class Session:
     def open_menu(self):
         self.unload()
         self.mode = "menu"
-        self.overlay = ui.game_menu(self.ctx.screen_size, self.fonts, self.games)
+        self.overlay = ui.game_menu(self.ctx.screen_size, self.fonts, self.games,
+                                    calibrate=self.can_calibrate)
         self.injector = self.menu_injector
         pygame.display.set_caption("Laser Platform")
 
@@ -97,6 +101,8 @@ class Session:
         elif action and action.startswith("play:"):
             if not self.load(action[5:]):
                 self.open_menu()
+        elif action == "calibrate":
+            self.calibrate_requested = self.can_calibrate
         elif action == "quit":
             return False
         return True
@@ -241,9 +247,21 @@ def run_game(
         screen_size=screen_size,
     )
 
-    session = Session(ctx, cfg, games)
+    session = Session(ctx, cfg, games, can_calibrate=camera)
     if game_id is not None and not session.load(game_id):
         session.open_menu()
+
+    def calibrate():
+        worker.set_detection_enabled(False)
+        H = tracker.auto_calibrate(screen, screen_size, worker)
+        worker.set_detection_enabled(True)
+        corners = getattr(tracker, "_corners_cam", [])
+        H_store.save(H, corners_cam=corners if len(corners) == 4 else None)
+        input_layer.set_homography(H)
+        if len(corners) == 4:
+            tracker.set_preview_corners_cam(corners)
+        else:
+            tracker.set_preview_corners_from_H(H, screen_size)
 
     running = True
     frames, stats_t, stats_cam, stats_det = 0, time.time(), 0, 0
@@ -262,18 +280,7 @@ def run_game(
                         running = session.act(action)
                         continue
                     if event.key == pygame.K_c and camera:
-                        worker.set_detection_enabled(False)
-                        H = tracker.auto_calibrate(
-                            screen, screen_size, worker)
-                        worker.set_detection_enabled(True)
-                        corners = getattr(tracker, "_corners_cam", [])
-                        H_store.save(H, corners_cam=corners if len(
-                            corners) == 4 else None)
-                        input_layer.set_homography(H)
-                        if len(corners) == 4:
-                            tracker.set_preview_corners_cam(corners)
-                        else:
-                            tracker.set_preview_corners_from_H(H, screen_size)
+                        calibrate()
 
                 # Debug injector
                 session.injector.handle_pygame_event(event, screen_size)
@@ -299,6 +306,11 @@ def run_game(
             if not running:
                 break
             running = session.frame(dt, points_by_color, render_surface)
+            if session.calibrate_requested:          # the menu's Calibrate button
+                session.calibrate_requested = False
+                calibrate()
+                session.open_menu()       # re-armed only once the laser leaves the buttons
+                continue
             pygame.draw.rect(render_surface, (220, 220, 220),
                              (8, 8, screen_size[0] - 16, screen_size[1] - 16), 1)
 

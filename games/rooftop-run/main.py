@@ -59,6 +59,7 @@ class RooftopRun(Game):
         self.particles: List[Particle] = []
         self._fonts = {}
         self._shake_x = self._shake_y = 0.0
+        self.thud = 0.0
         self._facades = scenery.Facades()
         self._clutter = {}
         self._sky = [scenery.Skyline(0, SKY_FAR, SKY_FAR_WIN, 9.0, (6, 20)),
@@ -86,7 +87,12 @@ class RooftopRun(Game):
     def _target_cam_y(self) -> float:
         w = self.world
         if w.support is not None:
-            return w.support.top
+            y = w.support.top
+            # near the edge, lower the view so the roof you'll land on is on screen
+            nxt = next((b for b in w.buildings if b.x > w.runner.x), None)
+            if nxt is not None and nxt.x - w.runner.x < max(8.0, w.speed * 1.4):
+                y = min(y, nxt.top + 4.0)
+            return y
         if w.dead and w.death == "fell":
             return self.cam_y
         # in the air: look at the next roof ahead so you can see where you'll land
@@ -108,6 +114,7 @@ class RooftopRun(Game):
         if not (self.world.dead and self.world.death == "fell"):
             self.cam_y = max(ry - span_up, min(ry + span_down, self.cam_y))
         self.shake = max(0.0, self.shake - dt * 1.6)
+        self.thud = max(0.0, self.thud - dt * 5.0)
 
     @property
     def ppu(self) -> float:
@@ -186,8 +193,9 @@ class RooftopRun(Game):
             elif kind == "land":
                 self._burst(x + RUNNER_W / 2, y, 3, DIM, 2, 0.15, up=1)
             elif kind == "debris_land":
-                self._burst(x + DEBRIS_SIZE / 2, y, 16, DIM, 6, 0.3, up=3)
-                self.shake = max(self.shake, 0.45)
+                self._burst(x + DEBRIS_SIZE / 2, y, 28, DIM, 9, 0.3, up=3)
+                self.shake = max(self.shake, 0.7)
+                self.thud = 1.0         # a downward jolt on top of the shake
             elif kind == "collapse":
                 self._collapse(x, y, extra[0])
             elif kind == "crumble":
@@ -230,6 +238,8 @@ class RooftopRun(Game):
         amp = self.shake * self.ppu * 0.4
         self._shake_x = random.uniform(-amp, amp) if amp > 0.5 else 0.0
         self._shake_y = random.uniform(-amp, amp) if amp > 0.5 else 0.0
+        if self.thud > 0:               # debris impact: the whole view dips, then springs back
+            self._shake_y += self.thud * self.thud * self.ppu * 0.5
         self._facades.new_frame()
         for sky in self._sky:
             sky.new_frame()
@@ -523,11 +533,7 @@ class RooftopRun(Game):
             self._center_text(surface, f"You ran {int(self.world.distance):,} m,", y0 - 20 * k, FG, 56)
             self._center_text(surface, DEATH_TEXT.get(self.world.death, ""), y0 + 26 * k, FG, 40)
             if self.dead_ms >= DEATH_RESTART_DELAY_MS:
-                msg = ("Let go of the laser, then shine it again to retry" if self.need_release
-                       else "Shine the laser (or Space) to retry")
-                self._center_text(surface, msg, y0 + 80 * k, DIM, 30)
-        self._text(surface, "Laser/Space: jump (hold = higher)  •  C: calibrate  •  Esc: pause",
-                   (int(20 * k), self.h - int(36 * k)), DIM, 24)
+                self._center_text(surface, "Retry?", y0 + 80 * k, DIM, 30)
 
     # -- events -----------------------------------------------------------------
     def on_event(self, event: pygame.event.Event) -> None:

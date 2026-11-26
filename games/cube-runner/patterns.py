@@ -272,3 +272,38 @@ def orb_to_high_block(r, d):
 @pattern(0.80)
 def orb_chain_over_pit(r, d):
     return [P(0, 14), O(2, 2.0), O(6, 2.2), O(10, 2.2)]
+
+
+# --- hold variant: staccato hops (CUBE_VARIANT=hold) --------------------------
+# A tap hops ~1.4 U, a full hold jumps ~2.6 U, every jump needs a fresh press. These
+# want quick on/off bursts: a train of short hops where a full hold kills.
+
+from .const import VARIANTS, HOLD_JUMP_VELOCITY, HOLD_VARIANT_GRAVITY
+
+if "hold" in VARIANTS:
+    HOP_AIR_S = 2 * HOLD_JUMP_VELOCITY / HOLD_VARIANT_GRAVITY    # a tap's air time
+
+    def hop_spacing(v):
+        """Spike spacing for back-to-back hops: one hop plus room to land and press again."""
+        return max(6, math.ceil((v or SPEED_START) * HOP_AIR_S + 2.5))
+
+    @pattern(0.08)
+    def hop_train(r, d, v=None):
+        # spikes under a low ceiling: tap, tap, tap (a full hold hits the ceiling)
+        n, sp = r.randint(3, 5), hop_spacing(v)
+        return [ceiling(0, (n - 1) * sp + 6, 3.0)] + [S(3 + i * sp) for i in range(n)]
+
+    @pattern(0.20)
+    def hang_row_hops(r, d, v=None):
+        # a row of hanging spikes over spaced spikes: hop, don't jump
+        n, sp = r.randint(3, 5), hop_spacing(v)
+        w = (n - 1) * sp + 6
+        return [H(i, 4.0) for i in range(w)] + [S(3 + i * sp) for i in range(n)]
+
+    @pattern(0.35)
+    def hops_then_wall(r, d, v=None):
+        # two quick hops, then hold hard to get up a 2-high wall
+        sp = hop_spacing(v)
+        run = max(4, math.ceil((v or SPEED_START) * 0.25))   # room to start a full jump
+        cw = sp + 6
+        return [ceiling(0, cw, 3.0), S(3), S(3 + sp), B(cw + run, r.randint(3, 5), 2)]

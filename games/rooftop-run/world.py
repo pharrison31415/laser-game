@@ -28,6 +28,8 @@ class Building:
     shattered: bool = False        # window: glass broken
     exit_shattered: bool = False   # window: the pane on the far side, smashed on the way out
     max_drop: float = 0.0          # crumble: how far it can have sunk when you leave it
+    ride_v: float = 99.0           # crumble: sink speed limit until the runner has passed it
+    ride_floor: float = -99.0      # crumble: lowest it goes while the runner is still over it
     collapsed: bool = False        # crumble: knocked down by running into it
     seed: int = 0                  # for facade decoration
 
@@ -80,14 +82,14 @@ class Runner:
     rolling: bool = False          # the stumble is a landing roll (after a hard landing)
 
 
-def air_time(dy: float) -> Optional[float]:
-    """Seconds a full-hold jump takes to come back down to height dy (relative to
-    takeoff), or None if it can't get that high."""
+def air_time(dy: float, hold_s: float = MAX_HOLD_S) -> Optional[float]:
+    """Seconds a jump held for hold_s (default: a full hold) takes to come back down
+    to height dy (relative to takeoff), or None if it can't get that high."""
     t, y, vy = 0.0, 0.0, JUMP_VELOCITY
     t_apex_y = 0.0
     dt = 1.0 / 240.0
     while True:
-        g = HOLD_GRAVITY if (t < MAX_HOLD_S and vy > 0) else GRAVITY
+        g = HOLD_GRAVITY if (t < hold_s and vy > 0) else GRAVITY
         vy = max(-MAX_FALL_SPEED, vy - g * dt)
         y += vy * dt
         t += dt
@@ -100,6 +102,29 @@ def air_time(dy: float) -> Optional[float]:
             t_apex_y = y
         if t > 10:
             return None
+
+
+def jump_apex(hold_s: float) -> float:
+    """Apex height (above takeoff) of a jump held for hold_s."""
+    t, y, vy = 0.0, 0.0, JUMP_VELOCITY
+    dt = 1.0 / 240.0
+    while vy > 0:
+        g = HOLD_GRAVITY if t < hold_s else GRAVITY
+        vy -= g * dt
+        y += vy * dt
+        t += dt
+    return y
+
+
+def hold_for_apex(apex: float) -> float:
+    """Longest hold whose jump peaks no higher than apex (0 = a tap)."""
+    lo, hi = 0.0, MAX_HOLD_S
+    if jump_apex(hi) <= apex:
+        return hi
+    for _ in range(20):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if jump_apex(mid) <= apex else (lo, mid)
+    return lo
 
 
 class World:
@@ -147,12 +172,17 @@ class World:
         options, weights = ["roof"], [5.0]
         if prev.kind == "roof":
             if self._unlocked("window", x):
-                options.append("window"); weights.append(1.6)
+                options.append("window"); weights.append(4.0)
             if self._unlocked("girder", x):
-                options.append("girder"); weights.append(1.3)
-            if self._unlocked("crumble", x):
-                options.append("crumble"); weights.append(1.1)
-        return self.rng.choices(options, weights)[0]
+                options.append("girder"); weights.append(3.2)
+        if self._unlocked("crumble", x):     # a run of crumbling roofs now and then, too
+            options.append("crumble"); weights.append(12.0 if prev.kind != "crumble" else 5.0)
+        kind = self.rng.choices(options, weights)[0]
+        if kind == "crumble":
+            reach = prev.top - prev.max_drop + STEP_UP_MAX * (0.5 + 0.5 * self._difficulty(x))
+            if reach < CRUMBLE_MIN_TOP:
+                kind = "roof"       # too low to have anywhere to sink to
+        return kind
 
     def _generate(self):
         r = self.rng
@@ -165,24 +195,36 @@ class World:
             kind = self._pick_kind(x, prev)
             seed = r.randrange(1 << 30)
 
+            takeoff = prev.top - prev.max_drop
             if kind == "window":
-                # run straight in through the glass (or tap); a big jump hits the wall above
-                floor = max(TOP_MIN, prev.top - r.uniform(0.5, 1.0))
-                gap = r.uniform(0.8, 1.3)
+                # a normal gap, jumped into the open storey: the jump that clears it
+                # peaks under the wall above the glass (a full-hold jump hits that wall)
+                floor = max(TOP_MIN, takeoff - r.uniform(0.5, 1.0))
                 ceil = floor + WINDOW_CEILING
+                hold = hold_for_apex(ceil - RUNNER_H - WINDOW_CLEARANCE - takeoff)
+                t = air_time(floor - takeoff, hold)
+                frac = r.uniform(0.35 + 0.2 * d, 0.6 + 0.2 * d) * GAP_SAFETY / 0.8
+                gap = max(GAP_MIN, min(frac, GAP_SAFETY) * v * t)
                 b = Building(x + gap, max(12.0, v * r.uniform(1.2, 2.4)), floor, "window",
                              ceil=ceil, slab_top=ceil + r.uniform(2.0, 8.0), seed=seed)
                 self.buildings.append(b)
                 continue
 
-            takeoff = prev.top - prev.max_drop
-            lo_top = max(TOP_MIN, takeoff - STEP_DOWN_MAX)
+            floor = CRUMBLE_FLOOR if prev.kind == "crumble" else TOP_MIN
+            lo_top = max(floor, takeoff - STEP_DOWN_MAX)
             hi_top = min(TOP_MAX, takeoff + STEP_UP_MAX * (0.5 + 0.5 * d))
+            hold = MAX_HOLD_S
+            if prev.kind == "window":
+                # leaving a window building: a full-hold jump would hit its ceiling, so
+                # plan for the biggest jump that fits under it
+                apex = prev.ceil - RUNNER_H - WINDOW_CLEARANCE - takeoff
+                hold = hold_for_apex(apex)
+                hi_top = max(lo_top, min(hi_top, takeoff + apex * 0.6))
             if kind == "crumble":
-                # prefer high crumbling roofs: they have room to sink, so they can be long
+                # prefer tall crumbling roofs: more room to sink
                 lo_top = min(max(lo_top, hi_top - 3.0), hi_top)
             top = r.uniform(lo_top, hi_top) if hi_top > lo_top else lo_top
-            t = air_time(top - takeoff)
+            t = air_time(top - takeoff, hold)
             reach = v * t if t else 0.0
             frac = r.uniform(0.35 + 0.2 * d, 0.6 + 0.2 * d) * GAP_SAFETY / 0.8
             gap = max(GAP_MIN, min(frac, GAP_SAFETY) * reach)
@@ -190,19 +232,26 @@ class World:
             if kind == "girder":
                 w = max(4.0, v * r.uniform(0.6, 1.2))
             elif kind == "crumble":
-                # long enough to feel, short enough that after sinking for its whole
-                # length the next roof (at worst TOP_MIN) is at most a half step up
-                room = top - (TOP_MIN - STEP_UP_MAX * 0.5)
-                secs = min(r.uniform(CRUMBLE_S_MIN, CRUMBLE_S_MAX),
-                           crumble_time_for_drop(room) - CRUMBLE_SLACK_S)
-                secs = max(0.3, secs)
-                w = v * secs
+                # it sinks while you ride it, slowly enough that at its far end the next
+                # roof (at worst TOP_MIN) is at most a half step up; then it falls away
+                w = v * r.uniform(CRUMBLE_S_MIN, CRUMBLE_S_MAX)
             else:
                 w = max(12.0, v * r.uniform(1.6, 4.0))
             b = Building(x + gap, w, top, kind, seed=seed)
             if kind == "crumble":
+                depth = min(CRUMBLE_MAX_DEPTH, top - (CRUMBLE_FLOOR - STEP_UP_MAX * 0.5))
                 # time on it is at most w / v (v is a pessimistic speed)
-                b.max_drop = crumble_drop(w / v + CRUMBLE_SLACK_S)
+                ride_t = w / v + CRUMBLE_SLACK_S
+                b.ride_v = crumble_ride_cap(depth, ride_t)
+                if b.ride_v < CRUMBLE_MIN_RIDE_V:
+                    # too long to sink briskly: shorten it so it sinks at the minimum pace
+                    c = CRUMBLE_MIN_RIDE_V
+                    t = depth / c + c / (2 * CRUMBLE_ACCEL) + CRUMBLE_DELAY_S
+                    b.w = w = max(v * CRUMBLE_S_MIN, v * (t - CRUMBLE_SLACK_S))
+                    ride_t = w / v + CRUMBLE_SLACK_S
+                    b.ride_v = crumble_ride_cap(depth, ride_t)
+                b.max_drop = min(depth, crumble_drop(ride_t))
+                b.ride_floor = top - depth
             self.buildings.append(b)
 
             if kind == "roof":
@@ -228,8 +277,14 @@ class World:
                 self.crates.append(Crate(cx, b.top))
                 if r.random() < 0.25:  # stacked pair
                     self.crates.append(Crate(cx, b.top + CRATE_SIZE))
-        if self._unlocked("debris", b.x) and b.w > 16 and r.random() < 0.35:
-            self.debris.append(Debris(b.x + b.w * r.uniform(0.35, 0.7), b, variant=r.randrange(3)))
+        if self._unlocked("debris", b.x) and b.w > 12 and r.random() < 0.08 + 0.17 * d:
+            # within 35-70% of the roof: room to react and land after it. Rare at first,
+            # more common (and sometimes in pairs on long roofs) as the run goes on.
+            spots = [r.uniform(0.35, 0.7)] if b.w < 30 or r.random() > 0.3 * d else \
+                [r.uniform(0.33, 0.4), r.uniform(0.62, 0.7)]
+            for f in spots:
+                self.debris.append(Debris(b.x + b.w * f, b,
+                                          variant=r.randrange(3)))
         if r.random() < 0.35:
             self._add_birds(b)
 
@@ -286,8 +341,13 @@ class World:
             if b.kind == "crumble" and b.touched_t is not None:
                 b.touched_t += dt
                 if b.touched_t > CRUMBLE_DELAY_S:
-                    b.sink_v = min(CRUMBLE_MAX_SINK, b.sink_v + CRUMBLE_ACCEL * dt)
-                    b.top -= b.sink_v * dt
+                    # paced while the runner is over it, then it falls all the way down
+                    cap = b.ride_v if p.x < b.right else CRUMBLE_MAX_SINK
+                    b.sink_v = min(cap, b.sink_v + CRUMBLE_ACCEL * dt)
+                    if b.top > FALL_DEATH_Y - 40:
+                        b.top -= b.sink_v * dt
+                    if p.x < b.right and b.top < b.ride_floor:   # (only if you're slower than planned)
+                        b.top = b.ride_floor
                     if b is self.support and p.grounded:
                         p.y = b.top      # standing on it: ride it down (it sinks faster than one step of falling)
 

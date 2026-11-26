@@ -304,23 +304,33 @@ class Facades:
         clip = surface.get_clip()
         surface.set_clip(pygame.Rect(x0, top_y, x1 - x0, bottom_y - top_y).clip(clip))
         sh = surface.get_height()
-        y = top_y
-        m = int(st.margin * pb)
-        end = x0 + m + round(st.n * st.bw * pb)            # last bay edge
+        # Tiles are cached at a rounded zoom (pb) but placed at the exact zoom (ppu),
+        # so the pattern stays locked to the building as the camera zooms smoothly.
+        # (Laying them out at pb drifted up to ~0.25 px per unit across a building,
+        # then snapped back whenever the zoom crossed to the next cached size.)
+        span_x = st.tile_bays * st.bw * ppu              # exact on-screen tile pitch
+        span_y = FLOORS_PER_TILE * st.fh * ppu
+        left = x0 + st.margin * ppu
+        end = left + st.n * st.bw * ppu                  # last bay edge
+        y = float(top_y)
         if cornice:
-            for xx in range(x0, x1, corn.get_width()):
-                surface.blit(corn, (xx, y))
-            y += corn.get_height()
-        y += int(pb * 0.3)
-        # skip whole tiles above the screen
-        if y + th < 0:
-            y += ((-y) // th) * th
+            cw = corn.get_width()
+            for k in range(int((x1 - x0) / cw) + 1):
+                surface.blit(corn, (x0 + k * cw, int(y)))
+            y += st.cornice_u * ppu
+        y += ppu * 0.3
+        if y + span_y < 0:                              # skip whole tiles above the screen
+            y += ((-y) // span_y) * span_y
         while y < min(bottom_y, sh):
-            xx = x0 + m
-            while xx < end:
-                surface.blit(floors, (xx, y), (0, 0, min(tw, end - xx), th))
-                xx += tw
-            y += th
+            j = 0
+            while True:
+                xx = left + j * span_x
+                if xx >= end:
+                    break
+                ix = int(round(xx))
+                surface.blit(floors, (ix, int(round(y))), (0, 0, min(tw, int(round(end)) - ix), th))
+                j += 1
+            y += span_y
         surface.set_clip(clip)
 
 
@@ -378,9 +388,14 @@ def draw_clutter(surface, items, sx, sy, ppu, t):
             pygame.draw.polygon(surface, C, [(sx(x - 0.12), sy(leg + th)), (sx(x + w / 2), sy(leg + th + w * 0.45)),
                                              (sx(x + w + 0.12), sy(leg + th))])
             pygame.draw.line(surface, L, (sx(x - 0.12), sy(leg + th)), (sx(x + w / 2), sy(leg + th + w * 0.45)), 1)
-            lx = sx(x + w * 0.75)       # ladder up the side
-            for yy in range(int(sy(leg + th)), int(yl), max(3, int(ppu * 0.3))):
-                pygame.draw.line(surface, C, (lx, yy), (lx + ppu * 0.25, yy), 1)
+            # ladder from the roof to the top of the tank: two rails and rungs
+            lx0 = sx(x + w * 0.7)
+            lx1 = lx0 + max(3, ppu * 0.28)
+            ytop = sy(leg + th)
+            for xx in (lx0, lx1):
+                pygame.draw.line(surface, L, (xx, ytop), (xx, yl), 1)
+            for yy in range(int(ytop) + 2, int(yl), max(3, int(ppu * 0.3))):
+                pygame.draw.line(surface, L, (lx0, yy), (lx1, yy), 1)
         elif k == "mast":           # antenna mast with crossbars and a slow blinking light
             _, x, h, ph = it
             xx = sx(x)

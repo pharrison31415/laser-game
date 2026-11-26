@@ -28,15 +28,15 @@ Start the arcade (or include `--debug` to emulate laser dots with mouse clicks):
 uv run launchers/run.py --preview
 ```
 
-This opens a game-select menu: hold the laser on a game's card until it fills to play it.
+This opens a game-select menu: click the laser on a game's card (turn it on over the card) to play it.
 Add `--game pong` to skip the menu and start in a game.
 
-While playing, hold the laser on the pause button in the top-right corner (or press `Esc`)
-to pause. The pause menu has Resume, Restart and Menu (back to game select), all chosen
-the same way by holding the laser on them, so you can switch games without restarting
-the program. In the game-select menu, `Esc` quits.
+While playing, click the laser on the menu button in the top-right corner (or press `Esc`)
+to pause. Sweeping the dot onto a button doesn't press it, so games played anywhere on the
+screen don't pause by accident. The pause menu has Resume, Restart and Menu (back to game
+select), chosen the same way, so you can switch games without restarting the program. In the game-select menu, `Esc` quits.
 
-Once the program begins, place the game window onto an external display placed in front of the webcam. Press `c` to calibrate. Once it is finished, shoot your lasers at the external display!
+Once the program begins, place the game window onto an external display placed in front of the webcam. Press `c` (or click the laser on Calibrate in the game-select menu) to calibrate. Once it is finished, shoot your lasers at the external display!
 
 Note: It is easier for the computer vision program to find red laser dots in darker environments.
 
@@ -51,10 +51,18 @@ Games are listed under the `games/` directory:
 - `cube-runner`: Your cube runs on its own -- shine the laser anywhere to jump over spikes, pits, and pillars. Jump pads launch you, orbs give a mid-air jump, and hatched ceilings punish jumping. Endless and randomly generated; the longer you survive, the faster it gets!
   The level is a chain of ~10-second sections (Rooftops, Cave, Pillar Hop, Spike Rhythm, ...);
   see [Drawing cube-runner sections](#drawing-cube-runner-sections).
+  Temporary experiments, combinable with commas: `CUBE_VARIANT=juice` (game feel), `gravity`
+  (gravity flips), `ship` (flying), `hold` (tap to hop, hold to jump higher) and `coins`
+  (combo pickups), e.g. `CUBE_VARIANT=hold,juice uv run launchers/run.py --game cube-runner`.
 - `rooftop-run`: One-button rooftop runner. You never stop running and keep speeding up; shine the
   laser to jump the gaps between buildings, holding it longer to jump higher. Crates slow you
   down; crash through windows, cross girders, and get off crumbling roofs fast. Falling, hitting a
   wall, or getting hit by falling wreckage ends the run.
+- `flock-shot`: Birds burst out of the grass and weave across the sky; shine the laser on one to
+  shoot it. Each flight of birds comes with three shots, and each round has ten birds: hit enough
+  of them to go on to the next round, where the birds are faster, twitchier and smaller. From
+  round 3 some birds zig-zag, stop and dash, or skim the grass; from round 4 dark decoy birds
+  join in: hitting one takes back a hit.
 
 ## Launcher usage
 
@@ -109,10 +117,28 @@ min_d: 0.2
 - One character is one cube. The last line is the ground: `-` is ground, a space is a pit.
 - `#` is a block (over a pit it becomes a pillar), `=` is a deadly hatched ceiling, `^` is a spike,
   `v` is a hanging spike, `J` is a jump pad and `o` is an orb.
+- Experimental: `c` is a coin (only with `CUBE_VARIANT=coins`; sections without any get coins
+  placed automatically), and a `variant: hold` header line makes the section appear only with
+  `CUBE_VARIANT=hold` (variable-height jump: a tap hops ~1.4 cubes, a full hold ~2.6; every jump needs a new press).
 - Start and end with at least 3 columns of ground.
-- Draw for the starting speed. The game stretches the section to the current speed, so it
+- Gravity flip (experimental, only with `CUBE_VARIANT=gravity`; give the section a
+  `variant: gravity` header line): `u` is a gravity portal that turns you upside down and `d` one
+  that turns you back. A vertical run of the same letter in one column is one gate (drawn as a green
+  frame with chevrons); touching any part of it flips you. Upside down you fall up, run along the
+  undersides of `#` blocks (draw a rail of them about 6 rows up), and jumps go downward; `v` spikes
+  are the hazards on a rail, hatched `=` stays deadly from below, and flying off the top of the
+  screen is a fall. `@` is a flip orb: touch it with the laser on to flip gravity either way.
+  Start and end these sections in normal gravity on the ground.
+- Draw for a speed of 8.5 cubes per second (`DRAW_SPEED`). The game stretches the section to the current speed, so it
   plays the same at any speed. A jump covers about 5 columns and reaches about 2.6 cubes high;
   a pad reaches about 5 cubes high.
+- Flying (experimental, only with `CUBE_VARIANT=ship`): `>` is a ship portal and `<` turns
+  you back into a cube. Stack the character vertically to draw the gate's height; it triggers
+  at any height in its column. While flying, holding the laser climbs and letting go sinks
+  (smooth, with momentum, up to about 1 cube per column either way). Sliding along the floor,
+  a block's top or under a `#` roof is safe; a block's side, any `=` ceiling, spikes and pits
+  kill. Add `variant: ship` to the header of a flying section, start it with a `>`, and end it
+  with a `<` followed by flat runway.
 
 ## Managing dependencies
 

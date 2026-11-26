@@ -2,10 +2,10 @@
 Engine-level overlay UI, drawn on top of every game: the pause button, the pause
 menu and the game-select menu.
 
-Everything is pressed by dwelling: hold a laser dot (any color, or the mouse with
---debug) on a button until its ring fills. A brief sweep across a button does
-nothing, so games that use the whole screen (shine anywhere to jump) don't
-pause by accident.
+Buttons are pressed by clicking the laser on them: a dot (any color, or the mouse
+with --debug) that appears on the button. Sweeping a dot onto a button does
+nothing, so games that use the whole screen (shine anywhere to jump) don't pause
+by accident. Holding is kept for "start"/"ready" inside games.
 """
 from __future__ import annotations
 
@@ -26,30 +26,37 @@ PANEL = (24, 27, 34)
 BG = (12, 14, 18)
 FILL = (50, 200, 120)
 
-PAUSE_DWELL_MS = 600       # the corner button: quick, but not a sweep
-BUTTON_DWELL_MS = 800      # menu buttons
+PRESS_RADIUS = 0.15        # fraction of screen height: a dot with no dot this close in
+                           # the previous frame is a new press, not a sweep
+
+
+class PressTracker:
+    """Turns laser points into presses: dots that just appeared."""
+
+    def __init__(self, screen_h: int):
+        self.r2 = (PRESS_RADIUS * screen_h) ** 2
+        self.prev: List[Point] = []
+
+    def presses(self, points: List[Point]) -> List[Point]:
+        out = [p for p in points
+               if not any((p.x - q.x) ** 2 + (p.y - q.y) ** 2 < self.r2 for q in self.prev)]
+        self.prev = list(points)
+        return out
 
 
 @dataclass
-class DwellButton:
+class Button:
     rect: pygame.Rect
     label: str
     action: str
-    dwell_ms: float = BUTTON_DWELL_MS
     sublabel: str = ""
-    progress: float = 0.0      # 0..1, how full the ring is
     hovered: bool = False
 
-    def update(self, dt_ms: float, points: List[Point], armed: bool) -> bool:
-        """Advance the dwell timer; True when the button fires. Not armed: the
-        pointer must leave every button once before anything can fire again."""
+    def update(self, dt_ms: float, points: List[Point], presses: List[Point], armed: bool) -> bool:
+        """True when a new laser press lands on the button. Not armed: the pointer
+        must leave every button once before anything can fire again."""
         self.hovered = any(self.rect.collidepoint(p.x, p.y) for p in points)
-        if self.hovered and armed:
-            self.progress += dt_ms / self.dwell_ms
-        else:
-            self.progress = max(0.0, self.progress - dt_ms / 250.0)
-        if self.progress >= 1.0:
-            self.progress = 0.0
+        if armed and any(self.rect.collidepoint(p.x, p.y) for p in presses):
             return True
         return False
 
@@ -80,14 +87,10 @@ def _wrap(font, text, width) -> List[str]:
     return lines
 
 
-def draw_button(surface, b: DwellButton, fonts: Fonts):
+def draw_button(surface, b: Button, fonts: Fonts):
     k = fonts.k
     border = FG if b.hovered else FAINT
     pygame.draw.rect(surface, PANEL, b.rect, border_radius=int(10 * k))
-    if b.progress > 0:      # fill from the left as the dwell builds
-        fill = b.rect.copy()
-        fill.width = int(b.rect.width * b.progress)
-        pygame.draw.rect(surface, (30, 70, 52), fill, border_radius=int(10 * k))
     pygame.draw.rect(surface, border, b.rect, max(2, int(2 * k)), border_radius=int(10 * k))
     if b.sublabel:
         title = fonts.get(44).render(b.label, True, FG)
@@ -112,14 +115,14 @@ class PauseButton:
         w, h = screen_size
         self.size = max(44, int(h * 0.075))
         margin = max(18, int(h * 0.03))
-        self.button = DwellButton(
-            pygame.Rect(w - margin - self.size, margin, self.size, self.size),
-            "", "pause", PAUSE_DWELL_MS)
+        self.button = Button(
+            pygame.Rect(w - margin - self.size, margin, self.size, self.size), "", "pause")
+        self.tracker = PressTracker(h)
         # laser points this close to the button are hidden from the game
         self.shield = self.button.rect.inflate(self.size // 4, self.size // 4)
 
     def update(self, dt_ms, points, armed) -> bool:
-        return self.button.update(dt_ms, points, armed)
+        return self.button.update(dt_ms, points, self.tracker.presses(points), armed)
 
     def filter(self, points_by_color: Dict[str, List[Point]]) -> Dict[str, List[Point]]:
         return {c: [p for p in pts if not self.shield.collidepoint(p.x, p.y)]
@@ -131,7 +134,7 @@ class PauseButton:
         r = b.rect.width / 2
         width = max(2, int(r / 9))
         pygame.draw.circle(surface, BG, b.rect.center, int(r))
-        draw_hold_target(surface, b.rect.center, r, b.progress, width=width,
+        draw_hold_target(surface, b.rect.center, r, 0.0, width=width,
                          ring_width=max(2, width - 1), ring_gap=max(5, r * 0.25))
         draw_hamburger(surface, b.rect.center, r * 0.95, HOLD_TARGET_COLOR, width)
 
@@ -139,14 +142,15 @@ class PauseButton:
 # -- menus -------------------------------------------------------------------------
 
 class Menu:
-    """A screen of dwell buttons. update() returns the fired button's action."""
+    """A screen of buttons. update() returns the pressed button's action."""
 
     def __init__(self, screen_size, fonts: Fonts, title: str, hint: str):
         self.w, self.h = screen_size
         self.fonts = fonts
         self.title = title
         self.hint = hint
-        self.buttons: List[DwellButton] = []
+        self.buttons: List[Button] = []
+        self.tracker = PressTracker(self.h)
         self.armed = False
         self.hint_y: Optional[int] = None     # None: at the bottom of the screen
 
@@ -156,8 +160,9 @@ class Menu:
         if not self.armed and not any(b.rect.collidepoint(p.x, p.y)
                                       for b in self.buttons for p in points):
             self.armed = True
+        presses = self.tracker.presses(points)
         for b in self.buttons:
-            if b.update(dt_ms, points, self.armed):
+            if b.update(dt_ms, points, presses, self.armed):
                 return b.action
         return None
 
@@ -178,28 +183,28 @@ def pause_menu(screen_size, fonts: Fonts, game_title: str) -> Menu:
     w, h = screen_size
     k = fonts.k
     m = Menu(screen_size, fonts, f"{game_title}: paused",
-             "Hold the laser on a button   ·   Esc resume   ·   R restart   ·   M menu")
+             "Shine the laser on a button   ·   Esc resume   ·   R restart   ·   M menu")
     gap = int(40 * k)
     bw, bh = min(int(300 * k), (w - int(80 * k) - 2 * gap) // 3), int(110 * k)
     x0 = (w - (3 * bw + 2 * gap)) // 2
     y = int(h * 0.42)
     for i, (label, action) in enumerate([("Resume", "resume"), ("Restart", "restart"),
                                          ("Menu", "menu")]):
-        m.buttons.append(DwellButton(pygame.Rect(x0 + i * (bw + gap), y, bw, bh), label, action))
+        m.buttons.append(Button(pygame.Rect(x0 + i * (bw + gap), y, bw, bh), label, action))
     m.hint_y = y + bh + int(36 * k)
     return m
 
 
-def game_menu(screen_size, fonts: Fonts, games: List[dict]) -> Menu:
-    """One card per game; card action is 'play:<id>'."""
+def game_menu(screen_size, fonts: Fonts, games: List[dict], calibrate: bool = True) -> Menu:
+    """One card per game (action 'play:<id>'), and a Calibrate button ('calibrate')."""
     w, h = screen_size
     k = fonts.k
     m = Menu(screen_size, fonts, "Choose a game",
-             "Hold the laser on a game to play   ·   C calibrate   ·   Esc quit")
+             "Shine the laser on a game to play   ·   C calibrate   ·   Esc quit")
     cols = min(4, max(1, len(games)))
     rows = math.ceil(len(games) / cols)
     gap = int(28 * k)
-    top, bottom = int(160 * k), h - int(80 * k)
+    top, bottom = int(160 * k), h - int((170 if calibrate else 80) * k)
     cw = (w - int(80 * k) - (cols - 1) * gap) // cols
     ch = min(int(230 * k), (bottom - top - (rows - 1) * gap) // max(1, rows))
     for i, g in enumerate(games):
@@ -207,8 +212,12 @@ def game_menu(screen_size, fonts: Fonts, games: List[dict]) -> Menu:
         in_row = min(cols, len(games) - r * cols)       # centre a short last row
         x0 = (w - (in_row * cw + (in_row - 1) * gap)) // 2
         rect = pygame.Rect(x0 + c * (cw + gap), top + r * (ch + gap), cw, ch)
-        m.buttons.append(DwellButton(rect, g["title"], f"play:{g['id']}",
+        m.buttons.append(Button(rect, g["title"], f"play:{g['id']}",
                                      sublabel=g.get("description", "")))
+    if calibrate:
+        bw, bh = int(300 * k), int(64 * k)
+        m.buttons.append(Button(pygame.Rect((w - bw) // 2, bottom + int(28 * k), bw, bh),
+                                "Calibrate", "calibrate"))
     return m
 
 

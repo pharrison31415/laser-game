@@ -32,19 +32,23 @@ JUMP_BUFFER_S = 0.12             # a press this long before landing still jumps
 CRATE_SIZE = 0.8
 CRATE_SLOWDOWN = 0.8             # speed multiplier when you smash a crate
 DEBRIS_SIZE = 1.3
-DEBRIS_GRAVITY = 80.0
-DEBRIS_DROP_VY = -10.0           # it's thrown down, not just dropped
+DEBRIS_GRAVITY = 150.0
+DEBRIS_DROP_VY = -22.0           # it's slammed down, not just dropped
 DEBRIS_LEAD_S = 1.15             # starts falling when you're this many seconds of running away
 HARD_LANDING_VY = -24.0          # landing faster than this makes you stumble...
 HARD_LANDING_SLOWDOWN = 0.9      # ...and lose some speed
 STUMBLE_S = 0.35
 WINDOW_CEILING = 5.0             # window buildings: ceiling height above the floor inside
 CRUMBLE_DELAY_S = 0.12           # crumbling buildings start sinking this long after you land
-CRUMBLE_ACCEL = 9.0              # U/s^2 sink acceleration...
-CRUMBLE_MAX_SINK = 5.0           # ...up to this sink speed (U/s), so long roofs don't plummet
-CRUMBLE_S_MIN = 0.6              # crumbling roofs are this many seconds of running long...
-CRUMBLE_S_MAX = 2.6              # ...at most (less if the roof is too low to sink that far)
+CRUMBLE_ACCEL = 18.0             # U/s^2 sink acceleration...
+CRUMBLE_MAX_SINK = 9.0           # ...up to this sink speed (U/s)
+CRUMBLE_S_MIN = 1.0              # crumbling roofs are this many seconds of running long...
+CRUMBLE_S_MAX = 3.0              # ...at most
 CRUMBLE_SLACK_S = 0.1            # extra sink time the generator allows for
+CRUMBLE_MIN_TOP = 1.0            # crumbling roofs only where there's room to sink
+CRUMBLE_MAX_DEPTH = 8.0          # while you're on one it sinks at most this far by its far end
+CRUMBLE_FLOOR = -1.0             # the roof after a crumbling one may be this low (lower than TOP_MIN)
+CRUMBLE_MIN_RIDE_V = 3.5         # crumbling roofs are short enough to sink at least this fast (U/s)
 
 
 def crumble_drop(t: float) -> float:
@@ -54,6 +58,16 @@ def crumble_drop(t: float) -> float:
     if t < ta:
         return 0.5 * CRUMBLE_ACCEL * t * t
     return 0.5 * CRUMBLE_ACCEL * ta * ta + CRUMBLE_MAX_SINK * (t - ta)
+
+
+def crumble_ride_cap(depth: float, t: float) -> float:
+    """Sink speed limit so a crumbling roof sinks at most depth in t seconds after landing."""
+    t = max(1e-3, t - CRUMBLE_DELAY_S)
+    a = CRUMBLE_ACCEL
+    if 0.5 * a * t * t <= depth:
+        return CRUMBLE_MAX_SINK
+    disc = max(0.0, a * a * t * t - 2 * a * depth)
+    return max(0.5, min(CRUMBLE_MAX_SINK, a * t - math.sqrt(disc)))
 
 
 def crumble_time_for_drop(drop: float) -> float:
@@ -71,6 +85,7 @@ FIRST_BUILDING_W = 60.0
 GAP_MIN = 1.5
 GAP_SAFETY = 0.8                 # gaps use at most this fraction of a full-hold jump
 STEP_UP_MAX = 2.2                # max roof rise (full-hold apex is ~3.8)
+WINDOW_CLEARANCE = 0.4           # a window jump's apex stays this far under the wall above the glass
 STEP_DOWN_MAX = 7.0
 TOP_MIN, TOP_MAX = 2.0, 16.0
 SPAWN_AHEAD = 140.0              # build this far past the runner (camera zooms out a lot)
@@ -79,8 +94,8 @@ UNLOCK = {
     "crates": 120,
     "window": 350,
     "girder": 650,
-    "crumble": 950,
-    "debris": 1300,
+    "crumble": 750,
+    "debris": 100,
 }
 
 # Flow
